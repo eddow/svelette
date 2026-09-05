@@ -86,6 +86,7 @@
 			},
 			"nursery": {},
 			"a11y": {
+				"noHeaderScope": "off",
 				"useButtonType": "off",
 				"noStaticElementInteractions": "off",
 				"useValidAnchor": "off",

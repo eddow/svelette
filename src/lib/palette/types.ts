@@ -734,6 +734,27 @@ export interface Palette<TSchema extends PaletteSchema = PaletteSchema> {
 		scope: PaletteScope<TSchema>
 	): PaletteConfiguratorComponent<TTool, TItem, TSchema> | undefined
 	/**
+	 * Compute the augmented configurator scope (sursaut's `augmentedScope`):
+	 * `scope` plus `editorChoices` for the item.
+	 */
+	resolveConfiguratorScope<TItem extends PaletteItem<TSchema>>(
+		item: TItem,
+		scope: PaletteScope<TSchema>
+	): PaletteScope<TSchema>
+	/**
+	 * Build the `context` prop an adapter binds when rendering an editor or
+	 * configurator component.
+	 */
+	resolveEditorContext<
+		TTool extends PaletteToolOf<TSchema> | undefined,
+		TItem extends PaletteItem<TSchema>,
+	>(
+		item: TItem,
+		tool: TTool,
+		scope: PaletteScope<TSchema>,
+		flags?: PaletteEditorFlags
+	): PaletteEditorContext<TTool, TItem, TSchema>
+	/**
 	 * Compute a headless configuration descriptor for a toolbar item.
 	 *
 	 * Adapters consume this descriptor to render item configuration UI.

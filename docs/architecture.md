@@ -149,9 +149,9 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 - `resolveConfiguratorScope` computes sursaut's `augmentedScope` (`scope` + `editorChoices`)
   for **both** configurator paths: the `configurator` fallback receives it as its `scope`
   argument, and adapters rendering a registry `spec.configure` component bind it as
-  `context.scope`. `surfaceContextFromScope` centralizes region→axis derivation;
-  `setPaletteScope` / `getPaletteScope` carry the scope record through Svelte context
-  (drawer portals propagate `palette` + `region` through it).
+  `context.scope` (via `resolveConfiguratorContext`). `surfaceContextFromScope` centralizes
+  region→axis derivation; `setPaletteScope` / `getPaletteScope` carry the scope record through
+  Svelte context (drawer portals propagate `palette` + `region` through it).
 - `$state` is only legal as a variable initializer, so `hydratePaletteLayout` builds a plain
   layout first and wraps it once (`const borders: PaletteBorders = $state(plain)`); nesting
   becomes reactive via deep `$state` proxying. Call it during component/module init, not from
@@ -178,8 +178,53 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 - `$derived` values are exposed through getter properties on the returned model object, never
   as shorthand properties — shorthand captures the initial value and breaks reactivity
   (`state_referenced_locally`).
-- Tests: `tests/palette/command-box.test.ts` (25) ports `command-box.spec.ts`; `h()` fixtures
-  become stub components, `mutts.reactive` becomes a probe-owned `$state`.
+- `commandRunner` throws `PaletteError` (not plain `Error`) for non-runnable specs, matching
+  the palette error taxonomy (deliberate divergence from the reference, which throws `Error`).
+- Tests: `tests/palette/command-box.test.ts` (26) ports `command-box.spec.ts`; `h()` fixtures
+  become stub components, `mutts.reactive` becomes a probe-owned `$state`. Added:
+  non-runnable spec throws `PaletteError`.
+
+## 15. Layout components (Phase 5 — implemented)
+
+- `src/lib/palette/layout.svelte.ts` ports `ui/src/palette/components.tsx` headless logic:
+  track spacing (`actualTrackSpaceAt`/`insertToolbar`/`removeToolbar`/`resizeToolbar`),
+  toolbar moves (`moveToolbarToTrack`/`moveToolbarToStack`), hit-testing
+  (`resolveTrackSpaceTarget`/`resolveToolbarSpaceTarget`/`resolveStackSpaceTarget`),
+  toolbar preview (`previewToolbarItems`/`finalizeToolbarPreview`), catalogue insert
+  (`beginPaletteCatalogInsertDrag` + native `dragover`/`dragend` window listeners), and
+  Svelte actions (`paletteRoot`, `paletteTrackSpace`, `paletteStackSpace`,
+  `paletteToolbarSpace`, `paletteToolbarDrag`, `paletteItemDrag`, `paletteItemShield`).
+- `src/lib/palette/drag-session.ts` ports `startLocalDragSession` trimmed to pointer
+  capture + window move/up listeners (no preview element; the 4px activation threshold
+  lives in the caller, matching the reference).
+- Runtime swaps: `mutts.reactive` → plain arrays (the `$state` `palettes` store proxies the
+  session on assignment); `mutts.unwrap` → direct reads; `mutts.effect` in `paletteRoot` →
+  `$effect` inside the action body (actions run in component init context — verified with a
+  throwaway probe before implementing); `startLocalDragSession` → `startPaletteDragSession`.
+- Dropped with rationale: `arranged()` scope classes (no `orientation-*`/`density-*`
+  selectors exist in the ported CSS; direction flows through `palette-horizontal` /
+  `palette-vertical` + `stack-*`); `use:toolbarsContainer` (no definition anywhere in the
+  reference source or its dependencies — layout is fully described by CSS classes).
+- `Palette` interface gains `resolveConfiguratorScope` / `resolveEditorContext` (already
+  implemented on the class in Phase 3; the interface was missing them and `Toolbar` needs
+  them for the `<PaletteItem>` bind step).
+- Components (`components/`): `Ide.svelte` (four optional borders + center slot, `$derived`
+  scope record published via `setPaletteScope`), `Toolbar.svelte` (toolbar + item spaces, edit-guard
+  overlay, click-to-inspect), `ToolbarTrack.svelte` (slots + spacing), `ToolbarBorder.svelte`
+  (region border, `inverse` reverses track order), `Parking.svelte` (owns its border seeded
+  once from `toolbars`, delete-button per row), `PaletteItem.svelte` (binds
+  `resolveEditorContext` output to `<Editor context={...} />`).
+- Components take `palette` (runtime class) + `scope` as props instead of Sursaut's ambient
+  scope/second-arg; `Toolbar` computes `dragTarget`/`spaceTarget` via functions (not `$derived`
+  shorthand) so space registration always sees current props.
+- Actions return `ReturnType<Action>` (`{ destroy() }`), not bare cleanups — Svelte's action
+  contract requires the object shape.
+- Tests: `tests/palette/components.test.ts` (13) ports `components.spec.ts` via
+  `PaletteRootProbe`/`PaletteItemDragProbe`/`IdeProbe`/`ParkingProbe` + `ParkingEditorStub`
+  (`rootEnv` directives become `use:` actions; `$state` proxies force `toStrictEqual` over
+  `toBe` for `inspecting.item` and the catalogue seed border); `tests/palette/item-movement.test.ts`
+  (13) is a verbatim port of `item-movement.spec.ts` locking the Phase 3
+  `resolveItemPlacementTarget` contract.
 
 ## 14. Tooling conventions
 

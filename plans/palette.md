@@ -45,10 +45,13 @@ src/lib/palette/
 ├── keys.ts                # keystroke normalization (pure, no runes)
 ├── palette.svelte.ts      # Palette class, valueActions, shared `palettes` $state, serialization
 ├── command-box.svelte.ts  # command/add-item/catalogue entry builders + command box model
+├── drag-session.ts        # pointer drag-session helper (no runes, pure listeners)
+├── layout.svelte.ts       # track spacing, toolbar moves, hit-testing, catalogue insert, actions
 ├── editors.ts             # default editor capability descriptors (pure data)
 ├── drawer-editor.svelte.ts# createPaletteDrawerEditor factory + collapse signal
 ├── components/
 │   ├── Ide.svelte
+│   ├── PaletteItem.svelte
 │   ├── Toolbar.svelte
 │   ├── ToolbarTrack.svelte
 │   ├── ToolbarBorder.svelte
@@ -81,12 +84,12 @@ Every export of `@sursaut/ui/palette` must have a Svelte equivalent. Source: `ui
 - [x] `setPaletteCommandBoxInput`, `handlePaletteCommandBoxInputKeydown`, `handlePaletteCommandChipKeydown`
 
 ### Layout components (`components/`)
-- [ ] `Ide`
-- [ ] `Toolbar`
-- [ ] `ToolbarTrack`
-- [ ] `ToolbarBorder`
-- [ ] `Parking`
-- [ ] `beginPaletteCatalogInsertDrag`
+- [x] `Ide`
+- [x] `Toolbar`
+- [x] `ToolbarTrack`
+- [x] `ToolbarBorder`
+- [x] `Parking`
+- [x] `beginPaletteCatalogInsertDrag`
 
 ### Drawer editor (`drawer-editor.svelte.ts`)
 - [ ] `createPaletteDrawerEditor`
@@ -100,19 +103,12 @@ Every export of `@sursaut/ui/palette` must have a Svelte equivalent. Source: `ui
 ### Phase 2 — Keys (`keys.ts`) ✅ (done, 8 tests green)
 ### Phase 3 — Palette runtime (`palette.svelte.ts`) ✅ (done, 17 + 15 tests green; see `docs/architecture.md` §12)
 
-### Phase 4 — Command box (`command-box.svelte.ts`) ✅ (done, 25 tests green; see `docs/architecture.md` §13)
+### Phase 4 — Command box (`command-box.svelte.ts`) ✅ (done, 26 tests green; see `docs/architecture.md` §13)
+- [x] `commandRunner` throws `PaletteError` for non-runnable specs (aligned with palette error taxonomy)
+- [x] `paletteCommandBoxModel` init-time constraint documented as a WARNING in the factory JSDoc
+      (create during component/module init only; late creation throws / detaches)
 
-### Phase 5 — Layout components
-- [ ] `<PaletteItem>` renderer binding `resolveEditorContext` output to
-      `<Editor context={...} />` (from review: bare-`Component` returns need a bind step)
-- [ ] `Ide.svelte` — four optional borders around a center slot
-- [ ] `Toolbar.svelte` — one toolbar in a region/direction
-- [ ] `ToolbarTrack.svelte` — one track (toolbar slots + spacing)
-- [ ] `ToolbarBorder.svelte` — a full region border
-- [ ] `Parking.svelte` — parked toolbar staging area
-- [ ] edit mode: draggable items, drop zones, item config on click
-- [ ] catalogue insert drag + pointer reorder (match sursaut `components.tsx` semantics)
-- [ ] Definition of done: port `components.spec.ts` and `item-movement.spec.ts`
+### Phase 5 — Layout components ✅ (done, 13 + 13 tests green; see `docs/architecture.md` §15)
 
 ### Phase 6 — Editors & configurators
 - [ ] Editor-registry render path via `svelte:component` / `mount` (dynamic editor component)
@@ -124,6 +120,11 @@ Every export of `@sursaut/ui/palette` must have a Svelte equivalent. Source: `ui
 - [ ] Default demo editors: button, splitButton, toggle, flip, radio, select, segmented,
       splitRadio, slider, stepper, stars, commandBox
 - [ ] Configurator panels driven by `describeItemConfiguration` descriptor
+- [ ] Bind configurator components with `resolveConfiguratorContext` so registry
+      `spec.configure` components receive `context.scope.editorChoices` (the `configurator`
+      fallback already gets it via `renderConfigurator`)
+- [ ] Confirm defensive editor resolution failure mode: `Toolbar.svelte` try/catch renders
+      nothing on unknown tools/missing editors — desired, or should it surface a visible fallback?
 - [ ] Definition of done: a demo palette renders every tool family in every region
 
 ### Phase 7 — Drawer editor
@@ -136,14 +137,14 @@ Every export of `@sursaut/ui/palette` must have a Svelte equivalent. Source: `ui
 
 ### Phase 8 — CSS ✅ (base port done; see `docs/architecture.md` §11)
 - [ ] Import the stylesheets in the demo layout (Phase 9)
-- [ ] Verify edit-mode hover states visually once `Ide`/`Toolbar` exist (Phase 5)
+- [x] Edit-mode hover states unblocked: `Ide`/`Toolbar` exist (Phase 5); verify visually in Phase 9
 
 ### Phase 9 — Demo + docs migration
 - [ ] Demo page in `src/routes/` exercising all four regions, edit mode, command box, drawer
 - [ ] Migrate this plan's "done" details into `docs/`; remove completed checkboxes
 
 ### Phase 10 — Full test parity + e2e
-- [ ] Port remaining specs: `components`, `item-movement`
+- [x] Port remaining specs: `components` (13), `item-movement` (13)
       (`keys`, `palette`, `serialization`, `command-box` already ported in Phases 2–4)
 - [ ] Playwright e2e: edit mode toggle, drag reorder, command box search/execute, drawer open/close
 

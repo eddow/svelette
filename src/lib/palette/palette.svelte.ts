@@ -21,6 +21,7 @@
  *
  * Pure algorithms (`resolveItemPlacementTarget`, serialization) are verbatim ports.
  */
+
 import { getContext, setContext } from 'svelte'
 import type {
 	PaletteBase,
@@ -60,6 +61,30 @@ import type {
 	PaletteToolToolbarItem,
 	SerializedPaletteLayout,
 } from './types'
+
+/**
+ * Typed Svelte context key carrying the palette scope record.
+ *
+ * `Ide.svelte` publishes its `$derived` scope; drawer portals (Phase 7)
+ * propagate `palette` + `region` through `mount` props into the same shape.
+ */
+const paletteScopeContextKey = Symbol('svelette:palette-scope')
+
+/**
+ * Publish a palette scope record into Svelte context.
+ */
+export function setPaletteScope<TSchema extends PaletteSchema>(scope: PaletteScope<TSchema>): void {
+	setContext(paletteScopeContextKey, scope)
+}
+
+/**
+ * Read the palette scope record from Svelte context.
+ */
+export function getPaletteScope<TSchema extends PaletteSchema>():
+	| PaletteScope<TSchema>
+	| undefined {
+	return getContext<PaletteScope<TSchema> | undefined>(paletteScopeContextKey)
+}
 
 /**
  * Factory signature used by `valueActions` to derive runnable commands from editable tools.
@@ -349,14 +374,12 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 	/**
 	 * Resolve the configurator component for an item through the palette's registry.
 	 *
-	 * Sursaut invoked `spec.configure({ …, scope: augmentedScope })`, injecting
-	 * the computed `editorChoices` at render time. The Svelte port returns the
-	 * bare component (the adapter binds the `context` prop), so the injection
-	 * moves to scope resolution: `resolveConfiguratorScope` computes the same
-	 * `augmentedScope` for **both** paths. Registry `spec.configure` components
-	 * read it from `context.scope.editorChoices` at render time (or via
-	 * `describeItemConfiguration`); the `configurator` fallback receives the
-	 * augmented scope as its `scope` argument, matching sursaut.
+	 * Sursaut invoked `spec.configure({ …, scope: augmentedScope })`, injecting the
+	 * computed `editorChoices` at render time. The Svelte port returns a bare
+	 * component — the adapter binds the `context` prop built by
+	 * `resolveConfiguratorContext` (which injects `editorChoices` through
+	 * `resolveConfiguratorScope`). The `configurator` fallback is a function, so it
+	 * receives the augmented scope as its argument here, matching sursaut.
 	 */
 	renderConfigurator<
 		TTool extends PaletteToolOf<TSchema> | undefined,
@@ -373,12 +396,12 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 	}
 
 	/**
-	 * Compute the augmented configurator scope (sursaut's `augmentedScope`).
+	 * Compute the augmented configurator scope (sursaut's `augmentedScope`),
+	 * injecting the computed `editorChoices` into `scope`.
 	 *
-	 * Shared by both configurator paths: the `configurator` fallback receives
-	 * it as its `scope` argument, and adapters rendering a registry
-	 * `spec.configure` component bind it as `context.scope` so
-	 * `scope.editorChoices` is populated at render time.
+	 * Used by `resolveConfiguratorContext` to build the `context` prop for
+	 * registry `spec.configure` components, and by the `configurator` fallback
+	 * path in `renderConfigurator`.
 	 */
 	resolveConfiguratorScope<TItem extends PaletteItem<TSchema>>(
 		item: TItem,
@@ -393,8 +416,7 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 	}
 
 	/**
-	 * Build the `context` prop an adapter binds when rendering an editor or
-	 * configurator component (Phase 5 item renderer).
+	 * Build the `context` prop an adapter binds when rendering an editor component.
 	 */
 	resolveEditorContext<
 		TTool extends PaletteToolOf<TSchema> | undefined,
@@ -408,6 +430,34 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 		const surface = surfaceContextFromScope(scope)
 		const spec = this.resolveEditor(item, tool, surface)
 		return { item, tool, scope, flags: { ...(spec?.flags ?? {}), ...flags }, surface }
+	}
+
+	/**
+	 * Build the `context` prop for a configurator component.
+	 *
+	 * Same shape as `resolveEditorContext`, but `scope` is the augmented
+	 * configurator scope (with `editorChoices` injected). Adapters render
+	 * `renderConfigurator`'s returned component with this context.
+	 */
+	resolveConfiguratorContext<
+		TTool extends PaletteToolOf<TSchema> | undefined,
+		TItem extends PaletteItem<TSchema>,
+	>(
+		item: TItem,
+		tool: TTool,
+		scope: PaletteScope<TSchema>,
+		flags?: PaletteEditorFlags
+	): PaletteEditorContext<TTool, TItem, TSchema> {
+		const augmentedScope = this.resolveConfiguratorScope(item, scope)
+		const surface = surfaceContextFromScope(augmentedScope)
+		const spec = this.resolveEditor(item, tool, surface)
+		return {
+			item,
+			tool,
+			scope: augmentedScope,
+			flags: { ...(spec?.flags ?? {}), ...flags },
+			surface,
+		}
 	}
 
 	/**
@@ -622,31 +672,6 @@ export function surfaceContextFromScope<TSchema extends PaletteSchema>(
 		axis: scope.region === 'left' || scope.region === 'right' ? 'vertical' : 'horizontal',
 		region: scope.region,
 	}
-}
-
-/**
- * Typed Svelte context key carrying the palette scope record.
- *
- * Components prefer `setPaletteScope` / `getPaletteScope` over prop-drilling
- * `PaletteScope`; the record stays the serializable payload (drawer portals
- * propagate `palette` + `region` through it).
- */
-const paletteScopeContextKey = Symbol('svelette:palette-scope')
-
-/**
- * Publish a palette scope record into Svelte context.
- */
-export function setPaletteScope<TSchema extends PaletteSchema>(scope: PaletteScope<TSchema>): void {
-	setContext(paletteScopeContextKey, scope)
-}
-
-/**
- * Read the palette scope record from Svelte context.
- */
-export function getPaletteScope<TSchema extends PaletteSchema>():
-	| PaletteScope<TSchema>
-	| undefined {
-	return getContext<PaletteScope<TSchema> | undefined>(paletteScopeContextKey)
 }
 
 /**

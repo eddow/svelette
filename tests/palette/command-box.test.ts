@@ -4,6 +4,7 @@ import {
 	handlePaletteCommandChipKeydown,
 	isEditableTool,
 	Palette,
+	PaletteError,
 	paletteAddItemEntries,
 	paletteCatalogEntries,
 	paletteCommandBoxModel,
@@ -697,6 +698,35 @@ describe('paletteCommandBoxModel', () => {
 		if (roundVariant?.kind === 'variant') {
 			expect(roundVariant.variant.id).toBe('tool:reset:tool')
 		}
+	})
+
+	it('throws PaletteError for non-runnable command specs', () => {
+		const tools: Record<string, never> = {
+			reset: {
+				label: 'Reset',
+				get can() {
+					return true
+				},
+				run() {},
+			} as never,
+		}
+		const palette = new Palette({
+			tools,
+			keys: createPaletteKeys({}),
+		} satisfies PaletteConfig)
+
+		// Entries capture the spec, not the tool: if the tool behind `reset`
+		// is later replaced by a non-runnable (editable) tool, executing the
+		// stale entry must throw the palette error taxonomy, not a plain Error.
+		const entry = paletteCommandEntries({ palette }).find((candidate) => candidate.id === 'reset')
+		expect(entry).toBeDefined()
+		tools.reset = {
+			type: 'boolean',
+			value: false,
+			default: false,
+		} as never
+		expect(() => entry!.run()).toThrow(PaletteError)
+		expect(() => entry!.run()).toThrow('is not runnable')
 	})
 
 	it('derives add-item entries and right-side variants from palette tools and editor-only items', () => {

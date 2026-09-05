@@ -211,7 +211,7 @@ function commandRunner<TSchema extends PaletteSchema>(
 	spec: string
 ): PaletteToolRun {
 	const runner = paletteTool(palette, spec)
-	if (!('run' in runner)) throw new Error(`Palette command "${spec}" is not runnable`)
+	if (!('run' in runner)) throw new PaletteError(`Palette command "${spec}" is not runnable`)
 	return runner
 }
 
@@ -926,6 +926,14 @@ export function handlePaletteCommandBoxInputKeydown<TSchema extends PaletteSchem
  * only legal inside `.svelte.ts` at component/module init, so the model must
  * be created during initialization (not in a late event handler or async
  * callback) — the same init-time constraint as `hydratePaletteLayout`.
+ *
+ * WARNING (init-time constraint): calling this factory outside component/module
+ * init (e.g. inside an event handler, `setTimeout`, or after `await`) throws
+ * Svelte's `rune_outside_svelte`-style init error (or creates detached,
+ * non-reactive state, depending on the Svelte version). Always create the model
+ * during component/module initialization and store it (e.g. `const box =
+ * paletteCommandBoxModel(...)` at the top of the component script), then drive
+ * it from handlers via `box.search()` / `box.execute()` / `box.input.value`.
  */
 export function paletteCommandBoxModel<TSchema extends PaletteSchema = PaletteSchema>(options: {
 	entries:
