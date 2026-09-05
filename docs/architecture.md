@@ -1,0 +1,199 @@
+# Architecture — svelette
+
+Foundational decisions for the Svelte 5 re-implementation of `@sursaut/ui/palette`.
+
+## 1. Identity
+
+- **svelette** = a Svelte 5 (runes) port of `@sursaut/ui/palette` — the headless palette
+  subsystem **only**.
+- **Headless** contract is preserved: the palette owns state, a11y semantics, tool resolution,
+  editing, and drag/drop — **not** styling. Adapters (demo editors) own markup and CSS.
+- Read-only reference source lives in `ui/` (symlink). Never edit it; treat it as the spec.
+- **Out of scope:** the rest of `@sursaut/ui` — the `*Model` functions (button/checkbox/select/…),
+  directives, and the `uiComponent` variant factory (styled variants + dot-syntax accessors). The
+  palette has no model layer and no variant layer.
+
+## 2. Toolchain (locked)
+
+| Tool | Version |
+|------|---------|
+| Node | 24.x |
+| npm | 11.x |
+| Svelte | `^5.57.0` (runes mode) |
+| SvelteKit | `^2.70.3` |
+| Vite | `^8.2.2` |
+| `@sveltejs/vite-plugin-svelte` | `^7.3.0` |
+| TypeScript | `^6.0.3` (TS 7 native compiler is **not** supported by `svelte-check`) |
+| Biome | `^2.5.12` |
+| Vitest | `^5.0.0` (+ `@testing-library/svelte`, jsdom) |
+| Playwright | `^1.62.1` |
+
+## 3. Runtime mapping
+
+| Sursaut | Svelte 5 |
+|---------|----------|
+| `mutts.reactive(x)` | `$state(x)` |
+| `mutts.effect(fn)` | `$effect(fn)` |
+| `mutts.unwrap(x)` | `x` (proxies are transparent) |
+| `mutts.lift(fn)` | `$derived` / `$derived.by` |
+| `JSX.Element` / `() => JSX.Element` | `Component` (`Snippet` excluded — no runtime discriminator) |
+| `options.iconFactory` | module-level `$state` icon factory |
+| Sursaut `use:directive` | Svelte `use:` action |
+| `latch()` portal | `mount(Component, { target })` from `svelte` |
+| `env` / scope | Svelte context or props |
+| `componentStyle.css` | global `styles/palette.css` (no scoping, no injection) |
+| `options` global config | module-level `$state` |
+
+## 4. File & naming rules
+
+- Runes (`$state` / `$derived` / `$effect`) **only** compile in `.svelte.ts` / `.svelte.js`.
+- Pure algorithms → `.ts`; reactive modules → `.svelte.ts`; UI → `.svelte`.
+- One module = one concern, mirroring the reference source map (`types`, `keys`, `palette`,
+  `command-box`, `components/*`, `drawer-editor`, `styles/*`).
+- Public entry point: `src/lib/palette/index.svelte.ts` barrel export.
+
+## 5. Editors are components — no model / variant layer
+
+The palette does **not** use `@sursaut/ui`'s `*Model` lazy-getter pattern (`buttonModel`,
+`checkboxModel`, …). That pattern belongs to the general UI library, which is out of scope.
+
+- A palette **editor** is a plain Svelte component that receives a `PaletteEditorContext`
+  (`item`, `tool`, `scope`, `flags`, `surface`) and renders itself.
+- No grouped-attribute objects to spread (`model.button`, `model.input`), no self-referential
+  getters.
+- No `uiComponent` variant factory and no styled variants. The palette is headless; any visual
+  styling belongs to the demo/adapter, never the palette core.
+- `PaletteEditorSpec.editor` / `.configure` hold a component (or a function returning one), not a
+  JSX factory.
+
+## 6. Shared runtime state
+
+- A single module-level `$state` object (`palettes`) owns `catalogDrag`, `dragging`, `editing`,
+  `inspecting` — exactly one palette editable at a time.
+- The drawer collapse signal (`paletteDrawerCollapse`) is a `$state({ version: 0 })`; consumers bump
+  `version` to close all open drawers synchronously.
+- Both live in `.svelte.ts` modules so any importer reacts to changes.
+
+## 7. Editor registry
+
+- Registries are keyed **family → variant** (`run`, `boolean`, `number`, `enum`, `item`).
+- A `PaletteEditorSpec.editor` is a Svelte **component** (not a JSX factory). Rendering resolves the
+  spec then mounts it dynamically (`svelte:component` or `mount`).
+- `PaletteEditorContext` carries `item`, `tool`, `scope`, `flags`, and `surface` (axis + region).
+- `surface.axis` derives from region: `top`/`bottom` → `horizontal`, `left`/`right` → `vertical`.
+
+## 8. Icons
+
+Sursaut's `@sursaut/ui` is **not** hardcoded to a glyph library: the palette only carries an icon
+value and never renders it itself. Rendering is delegated to a pluggable `options.iconFactory`;
+the `pure-glyf` package (a separate optional Vite-plugin + adapter, `registerGlyfIconFactory()`)
+is merely *one* such factory.
+
+svelette mirrors that split, in a Svelte-idiomatic way:
+
+- **Palette core stays icon-agnostic.** `PaletteIcon = string | Component` flows through
+  tools / entries / toolbar items to the editor, which is the *only* thing that renders it.
+  (`Snippet` is excluded: `Component` and `Snippet` are both callables with no runtime
+  discriminator, so the `Icon` helper could never render a `Snippet` member. Callers with
+  inline markup wrap it in a component or render it directly with `{@render}`.)
+- **One small `Icon.svelte` helper** (demo/adapter layer, not core) resolves the two cases:
+  - `Component` → `<svelte:component this={...} />`
+  - `string` → a registered string resolver, else `<span data-icon="name">name</span>`
+- **String-name resolution** is a consumer concern, provided as a module-level `$state` factory
+  (the Svelte equivalent of `options.iconFactory`), e.g. `icons.factory = (name) => <i class={name} />`.
+
+We do **not** port `pure-glyf`; the demo can use `Component` directly, emoji strings, or
+register a factory that maps names to CSS classes.
+
+## 9. Portal pattern (drawer)
+
+Drawers render a popup perpendicular to their parent axis into `document.body` via
+`mount()`. The popup root receives a new scope carrying `palette` and `region` so nested
+`Toolbar`s resolve tools and nested drawers invert their axis correctly.
+
+## 10. Serialization
+
+- `serializePaletteLayout` / `validatePaletteLayout` are pure (`.ts`).
+- `hydratePaletteLayout` rebuilds deeply reactive structures with `$state` (`.svelte.ts`).
+
+## 11. Styling — global CSS, never scoped or injected
+
+- CSS is **always global** unless true component scoping is required. Palette styles live in
+  `src/lib/palette/styles/` (`palette.css` headless layout + edit-mode affordances,
+  `palette-default.css` demo theme) and are imported once by the app — never injected at
+  runtime, never duplicated per instance.
+- Selectors stay specific through class hierarchy (`.palette-ide.editing .toolbar:hover::before`),
+  never bare names (`.active {`). No `data-palette-id` scoping: only one palette is editable at
+  a time (`palettes.editing`), so per-instance `<style>` elements are pure overhead.
+- The reference `componentStyle.css` injection (`paletteInstanceStyle` + `#disposeStyle`) was
+  deleted. `Palette.dispose()` is a no-op kept for API parity. The `Ide` component toggles the
+  `.editing` class from `palette.editing` (Phase 5).
+- Drawer popup classes use the `svelette-` prefix (`.svelette-palette-drawer__popup`), not
+  `sursaut-`.
+
+## 12. Palette runtime (Phase 3 — implemented, review fixes applied)
+
+- `src/lib/palette/palette.svelte.ts` ports `ui/src/palette/palette.ts` verbatim except for the
+  Sursaut runtime swaps below; `src/lib/palette/index.svelte.ts` is the barrel entry point.
+- `mutts.reactive(x)` → `$state(x)`; `mutts.unwrap` → direct reads. Svelte `$state` never
+  proxies class instances, so palette identity is plain `===` (`palettes.editing === this`).
+- `mutts.effect` in `setter()` is omitted: module scope has no effect context, the `WeakMap`
+  restore entry is GC-hygienic on its own. Verified divergence: with two setters on one tool
+  (`fontSize|11`, `fontSize|12`), the second `run()` overwrites the first's stored restore
+  value without sursaut's effect cleanup, so re-running the second setter restores the stale
+  value instead of `default`. Single-setter behaviour is identical.
+- `renderEditor` / `renderConfigurator` **return** the editor/configurator component (the adapter
+  renders it with a `context` prop built by `resolveEditorContext`) instead of invoking a JSX
+  factory. `Palette.Toolbar` / `Palette.Ide` factories are omitted here — layout components land
+  in `components/` (Phase 5).
+- `resolveConfiguratorScope` computes sursaut's `augmentedScope` (`scope` + `editorChoices`)
+  for **both** configurator paths: the `configurator` fallback receives it as its `scope`
+  argument, and adapters rendering a registry `spec.configure` component bind it as
+  `context.scope`. `surfaceContextFromScope` centralizes region→axis derivation;
+  `setPaletteScope` / `getPaletteScope` carry the scope record through Svelte context
+  (drawer portals propagate `palette` + `region` through it).
+- `$state` is only legal as a variable initializer, so `hydratePaletteLayout` builds a plain
+  layout first and wraps it once (`const borders: PaletteBorders = $state(plain)`); nesting
+  becomes reactive via deep `$state` proxying. Call it during component/module init, not from
+  late event handlers or async callbacks. The native `dragend` listener stays a boolean-guarded
+  `window.addEventListener` (capture): `svelte` exposes no `effectRoot`, and module scope has
+  no effect context; the handler delegates to `clearPaletteCatalogDragOnNativeDragEnd` (tested).
+- Tests: `tests/palette/palette.test.ts` (17) + `tests/palette/serialization.test.ts` (15) +
+  `tests/palette/command-box.test.ts` (25) port `palette.spec.tsx` + `serialization.spec.ts` +
+  `command-box.spec.ts`; JSX-factory assertions become component-identity assertions,
+  `mutts.reactive` fixtures become plain objects, and the `configure`-call-count assertion is
+  dropped (spec components are returned, not invoked). Added: configurator-scope injection,
+  surface-axis derivation, `dragend` clearing, multi-setter divergence, and hydrated
+  reactivity (`HydratedBordersProbe.svelte`).
+
+## 13. Command box (Phase 4 — implemented)
+
+- `src/lib/palette/command-box.svelte.ts` ports `ui/src/palette/command-box.ts` verbatim except
+  for the Svelte runtime swaps: `mutts.reactive` → `$state`, `mutts.lift` → `$derived.by`,
+  `string | JSX.Element | (() => JSX.Element)` icons → `PaletteIcon`.
+- `paletteCommandBoxModel` must be created during component/module init (same `$state`
+  init-time constraint as `hydratePaletteLayout`). `entries` may be a static array or a reader
+  function re-read inside `$derived`; a component-owned `$state` source refreshes `results`
+  (asserted via `CommandBoxEntriesProbe.svelte`).
+- `$derived` values are exposed through getter properties on the returned model object, never
+  as shorthand properties — shorthand captures the initial value and breaks reactivity
+  (`state_referenced_locally`).
+- Tests: `tests/palette/command-box.test.ts` (25) ports `command-box.spec.ts`; `h()` fixtures
+  become stub components, `mutts.reactive` becomes a probe-owned `$state`.
+
+## 14. Tooling conventions
+
+- Lint/format: `npm run lint` / `npm run lint:fix` (Biome — tabs, single quotes, `asNeeded`
+  semicolons, width 100; Svelte via `html.experimentalFullSupportEnabled`).
+- Type-check: `npm run check` (`svelte-kit sync && svelte-check`).
+- Unit: `npm test` (Vitest, jsdom, `resolve.conditions: ['browser']` for Svelte client build).
+- E2E: `npm run test:e2e` (Playwright, builds + previews on port 4173).
+- Scratch files go in `sandbox/` (git-ignored), never `/tmp`.
+
+### Gotchas (recorded)
+
+- Run `svelte-kit sync` before Vitest — the generated `.svelte-kit/tsconfig.json` is required by
+  the resolver (`tsconfig not found`).
+- Vitest must set `resolve.conditions: ['browser']`, else Svelte resolves to its server build and
+  `mount()` throws `lifecycle_function_unavailable`.
+- Biome 2.x has no `files.ignores`; exclusions are `!`-prefixed entries in `files.includes`.
