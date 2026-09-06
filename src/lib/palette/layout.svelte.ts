@@ -780,6 +780,14 @@ function createItemDragging(
 		}
 	}
 	if (target.toolbar[target.itemIndex] !== target.item) return undefined
+	// Detach the item into an ephemeral single-item shell. The re-insertion
+	// preview runs at drag activation on the `$state`-proxied session (see
+	// `onActivate` in `paletteItemDrag`): previewing here on the still-plain
+	// session object breaks the shared ephemeral border/track references on
+	// the subsequent `palettes.dragging = dragging` proxy assignment, so the
+	// next move's preview no-ops while the removal stands and the item
+	// vanishes. A plain click (no activation) restores the item at its origin
+	// via the session `onClick`.
 	target.toolbar.splice(target.itemIndex, 1)
 	const toolbar: PaletteToolbar = [target.item]
 	const track: PaletteTrack = [{ space: 0, toolbar }]
@@ -800,7 +808,6 @@ function createItemDragging(
 		track,
 		trackIndex: 0,
 	}
-	previewToolbarItems(dragging, target.toolbar, target.itemIndex)
 	return {
 		dragging,
 		target: {
@@ -990,6 +997,7 @@ function startPaletteToolbarDragSession(
 		origin?: PaletteDragOrigin
 		onClick?: () => void
 		onMoved?: () => void
+		onActivate?: (active: PaletteDragging) => void
 	}
 ): void {
 	let originRect: DOMRectReadOnly | undefined
@@ -1011,7 +1019,21 @@ function startPaletteToolbarDragSession(
 			if (!activated) {
 				if (pointDistance(snapshot.start, snapshot.current) < 4) return
 				activated = true
+				// The session object is plain until now; assigning it into the
+				// `$state` store deep-proxies the nested arrays, which breaks
+				// the ephemeral border/track `indexOf` identity the preview
+				// path relies on. Re-link the shell through the store's own
+				// proxies before activating, so every reference below shares
+				// the same proxied arrays.
 				palettes.dragging = dragging
+				const active = palettes.dragging as PaletteDragging
+				const liveTrack = active.border[0]
+				if (liveTrack) {
+					active.track = liveTrack
+					const liveToolbar = liveTrack[0]?.toolbar
+					if (liveToolbar) active.toolbar = liveToolbar
+				}
+				options?.onActivate?.(active)
 			}
 			paletteToolbarDragApplyMove(
 				snapshot.current,
@@ -1198,10 +1220,14 @@ function bindPaletteCatalogDrop(
 				collapseDeferredSourceTrack(session)
 			} else {
 				const item = session.sourceItems[0]
-				const stillOnCatalogSeed =
-					session.catalogInsertSeedBorder !== undefined &&
-					session.border === session.catalogInsertSeedBorder
-				if (item && stillOnCatalogSeed) insert(item as PaletteToolbarItem, event)
+				// The seed-border identity check guards against double-insert
+				// after a track/stack move (which re-shells `border`), but the
+				// `$state` proxy breaks `===` identity even when the session
+				// never moved. Insert whenever no preview was committed —
+				// `delete palettes.dragging` below makes a second drop a no-op
+				// (no session → falls to the MIME path, whose stub transfer is
+				// spent), so double-insert is impossible here.
+				if (item) insert(item as PaletteToolbarItem, event)
 				collapseDeferredSourceTrack(session)
 			}
 			delete palettes.dragging
@@ -1475,8 +1501,22 @@ export function paletteItemDrag(
 			drag.dragging.toolbar === target.toolbar
 				? (element.closest<HTMLElement>('.toolbar') ?? element)
 				: element
+		// The item detaches on pointerdown (see `createItemDragging`) but the
+		// re-insertion preview is deferred to activation, where the session
+		// is already `$state`-proxied and the ephemeral border/track
+		// references stay consistent. A plain click (no activation) restores
+		// the item at its origin instead.
+		const detachedItem = target.item
+		const detachedToolbar = target.toolbar
+		const detachedIndex = target.itemIndex
 		startPaletteToolbarDragSession(sessionElement, drag.target, event, drag.dragging, {
 			origin,
+			onActivate: (active) => {
+				previewToolbarItems(active, detachedToolbar, detachedIndex)
+			},
+			onClick: () => {
+				detachedToolbar.splice(detachedIndex, 0, detachedItem)
+			},
 			onMoved: () => {
 				if (
 					palettes.inspecting?.palette === target.palette &&

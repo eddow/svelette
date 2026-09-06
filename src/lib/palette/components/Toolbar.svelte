@@ -122,7 +122,11 @@
 	></div>
 	{#each toolbar as item, index (item)}
 		{@const resolved = resolveItem(item)}
-		<div class="toolbar-item">
+		<div
+			class="toolbar-item"
+			data-tool={'tool' in item ? (item.tool ?? undefined) : undefined}
+			data-editor={'editor' in item ? (item.editor ?? undefined) : undefined}
+		>
 			<div class="toolbar-item-content" use:paletteItemShield={shieldActive()}>
 				{#if resolved.Editor && resolved.context}
 					<PaletteItem Editor={resolved.Editor} context={resolved.context} />

@@ -26,7 +26,7 @@
 	}
 </script>
 
-<div {...el} class={['toolbar-track', el?.class]}>
+<div {...el} class={['toolbar-track', el?.class]} data-track-index={trackIndex}>
 	<div
 		{...space}
 		class={['toolbar-track-space', space?.class]}

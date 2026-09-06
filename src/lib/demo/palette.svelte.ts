@@ -1,6 +1,7 @@
 import { createPaletteKeys } from '$lib/palette/keys'
 import { Palette } from '$lib/palette/palette.svelte'
 import type { PaletteBorders } from '$lib/palette/types'
+import { openConsole } from './console.svelte'
 import { demoEditors } from './editors/registry'
 
 export type DemoState = {
@@ -168,6 +169,7 @@ export const demoPalette = new Palette({
 			},
 			run() {
 				demoState.lastAction = 'Terminal opened'
+				openConsole()
 			},
 		},
 		reset: {
@@ -402,6 +404,38 @@ export const initialIdeConfig: PaletteBorders = {
 						tool: 'fontSize',
 						editor: 'slider',
 						config: { icon: 'A', label: 'Type scale', hint: 'Small range editor' },
+					},
+				],
+			},
+		],
+		[
+			{
+				space: 0.5,
+				toolbar: [
+					{
+						tool: 'terminal',
+						editor: 'button',
+						config: { icon: '`', label: 'Terminal', hint: 'Open console overlay' },
+					},
+					{
+						tool: 'presentation',
+						editor: 'button',
+						config: { icon: '🎬', label: 'Present', hint: 'Apply presentation preset' },
+					},
+					{
+						tool: 'inspectPreset',
+						editor: 'button',
+						config: { icon: '🧭', label: 'Inspect', hint: 'Apply inspector preset' },
+					},
+					{
+						tool: 'theme',
+						editor: 'radio',
+						config: { icon: '🎨', label: 'Theme', hint: 'Radio enum editor' },
+					},
+					{
+						tool: 'mode',
+						editor: 'radio',
+						config: { icon: '⌘', label: 'Mode', hint: 'Radio enum editor' },
 					},
 				],
 			},

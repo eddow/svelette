@@ -126,8 +126,11 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   never bare names (`.active {`). No `data-palette-id` scoping: only one palette is editable at
   a time (`palettes.editing`), so per-instance `<style>` elements are pure overhead.
 - The reference `componentStyle.css` injection (`paletteInstanceStyle` + `#disposeStyle`) was
-  deleted. `Palette.dispose()` is a no-op kept for API parity. The `Ide` component toggles the
-  `.editing` class from `palette.editing` (Phase 5).
+  deleted. `Palette.dispose()` is a no-op kept for API parity.
+- Edit-mode hover states are live, not just unblocked: `paletteRoot` toggles
+  `editing`/`palette-editing` classes + `data-editing` from `palette.editing`, and the
+  ported `.palette-ide.editing .toolbar…` / `.toolbar-item-guard…` rules render the
+  hover/active chrome. Verified in the Phase 9 demo (edit toggle → hover a toolbar).
 - Drawer popup classes use the `svelette-` prefix (`.svelette-palette-drawer__popup`), not
   `sursaut-`.
 
@@ -301,6 +304,103 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 - Tests: `tests/palette/drawer.test.ts` (6) — factory shape, open-on-click + Escape close,
   collapse-signal close, axis inversion both ways, popup scope publishing, hover travel
   stays open. Gates: `check` 0/0, `lint` clean, `test` 101 pass, `build` ok.
+
+## 18. Demo page (Phase 9 — complete)
+
+- `src/routes/+page.svelte` exercises all four regions (top command/toggle/splitRadio/select
+  + mode/slider/drawer/splitButton; left flip/splitRadio/nested drawer; right slider/stars;
+  bottom stars/segmented + segmented/slider + a second track with `button` run editors
+  (`terminal`/`presentation`/`inspectPreset`) and `radio` enum editors (`theme`/`mode`)), the
+  edit-mode toggle (`palettes.editing`), the toolbar command box, drawer popups with axis
+  inversion, and the item inspector (`renderConfigurator` + `resolveConfiguratorContext` →
+  `<Configurator context>`).
+- Center content shows a live-state panel (hero + pills + state grid bound to `$state`
+  `demoState`) so every tool mutation is visible without opening devtools.
+- Console overlay (`src/lib/demo/console.svelte.ts` + `src/lib/demo/ConsoleOverlay.svelte`,
+  opened by the `terminal` run tool): popup command-box overlay reusing the
+  `.palette-default-command-*` styles. Command mode runs `paletteCommandEntries` (state tools
+  like "Set Theme to Dark" / "Increase Font Size" execute in both the toolbar box and the
+  console); edit mode swaps to `paletteAddItemEntries` with `enterAction: 'select'`. A
+  checkbutton bound to `palettes.editing` toggles *Command* ↔ *Toolbar edition*.
+- Add-to-toolbar flow: selected add entry expands via `paletteDerivedVariants` into variant
+  cards (boolean/number/enum value inputs, enum allowed-values/keyword filters mirroring the
+  reference `popupAddItem`); the selected variant builds a live `Toolbar` preview. Catalogue
+  (`paletteCatalogEntries`) renders draggable rows. Both paths start native HTML5 drags
+  (`PALETTE_CATALOG_DRAG_MIME` + `serializePaletteCatalogDragPayload` on `dataTransfer`,
+  `beginPaletteCatalogInsertDrag` + `notifyPaletteCatalogNativeDragStarted` on `dragstart`);
+  drops land in the existing `bindPaletteCatalogDrop` toolbar/track/stack zones.
+- `Parking` renders at the top of the console, seeded from the live top border minus the
+  command-box item (mirrors the reference `popupParkingToolbars`); parked toolbars can be
+  removed/restored through the parking drop zones while editing.
+- Persistence: `+page.svelte` seeds `structuredClone(initialIdeConfig.*)` `$state` at init
+  (server + client first render identical, no hydration mismatch; also avoids mutating the
+  shared module object) and splices a validated stored snapshot in `onMount`
+  (`hydratePaletteLayout` can't run post-init — its `$state` is init-only — so the plain
+  stored borders are spliced directly into the deep proxies). "Save layout" / "Reset layout"
+  buttons round-trip through localStorage.
+- Inspector structural actions: `describeItemConfiguration` on the live toolbar/index
+  (resolved by item identity across all four borders) drives move-backward/move-forward
+  (splice within the toolbar) + remove buttons and the `bindings.shortcut` display
+  (`findByTool`).
+- Init-time constraint respected: all `paletteCommandBoxModel` instances are created during
+  component init; stored-layout restore splices plain data in `onMount`, never in handlers.
+- Gates: `check` 0/0, `lint` clean, `test` 101 pass, `build` ok.
+
+## 19. E2E coverage (Phase 10 — complete)
+
+- `e2e/palette.spec.ts` (6): edit-mode toggle label + `.palette-ide.editing` chrome,
+  toolbar command-box search/execute ("Set Theme to Dark" → `🎨 dark` pill), drawer open
+  with axis inversion (top drawer → `is-vertical` popup) + Escape close, inspector via
+  `pointerdown` on the edit-mode `.toolbar-item-guard` (shortcut display, move-back
+  disabled / move-forward enabled, forward → "Item moved forward"), layout save → reload
+  → "restored" badge → reset, pointer drag reorder (synthetic `PointerEvent`
+  `pointerdown` on the notifications guard + `pointermove`/`pointerup` on `window` with
+  a shared `pointerId`, drop on the gap after theme → order flips to
+  `[commandBox, layout, theme, notifications]`).
+- `e2e/console.spec.ts` (6): backtick opens the console (Ide root focused first —
+  `paletteRoot` listens on the root `keydown`, so a bare body-level press never reaches
+  it) + command execute closes the overlay, Terminal button open + Escape close,
+  checkbutton swaps `Command…` ↔ `Add to toolbar…` placeholders with catalogue + add
+  panel, add flow (Notifications entry → variant card → value select), catalogue rows
+  carry `draggable="true"`, catalogue drop (synthetic `dragstart`/`dragover`/`drop`
+  with a `dataTransfer` stub → session path inserts the row's item into the first
+  toolbar gap, count + 1).
+- E2E lessons: `paletteItemDrag` inspects on `pointerdown`, so tests dispatch
+  `pointerdown`/`pointerup` on the guard instead of `click({ force: true })`; keyboard
+  shortcut tests must focus `.palette-ide` (tabindex=0) before pressing. Trusted
+  Playwright `mouse`/`pointerdown` events carry `isPrimary: false` / `buttons: 0` on
+  the first move, which the drag session ignores — drag tests use synthetic
+  `PointerEvent`s with an explicit `pointerId`/`isPrimary`. Gaps are zero-width until
+  proximity chrome expands them, so drop points target the gap edge (`rect.left`),
+  never a `+2px` nudge (which lands outside and resolves to a track/stack move).
+  `new DragEvent(..., { dataTransfer })` rejects non-native transfers — catalogue
+  tests fire plain `Event`s with a shadowed `dataTransfer` stub instead.
+- Drag-engine fixes found via e2e (see §20): deferred item preview to activation +
+  `$state` proxy re-link + unconditional catalogue seed insert.
+- Flake note: toolbar command-box e2e failed once under 11-worker `fullyParallel`
+  (result `toBeVisible` timeout; green in 2 full + 3 isolated reruns) — mitigated by
+  waiting for `.palette-default-command-popover` before asserting the result (the
+  140ms `inline-size` transition delays popover visibility vs. actionability).
+- Gates: `check` 0/0, `lint` clean, `test` 101 pass, `test:e2e` 13 pass, `build` ok.
+
+## 20. Drag-engine `$state` proxy hazards (Phase 10 — found via e2e)
+
+- `createItemDragging` detaches the item on `pointerdown` but defers the re-insertion
+  preview to drag activation (`onActivate` in `paletteItemDrag`): previewing on the
+  still-plain session object stores the live source toolbar in the preview, and the
+  subsequent `palettes.dragging = dragging` `$state` assignment breaks the shared
+  ephemeral border/track references — the next move's preview no-ops
+  (`border.indexOf(track)` misses) while the removal stands, so the item vanishes.
+  A plain click (no activation) restores the item at its origin via `onClick`.
+- Activation re-links the ephemeral shell through the store's own proxies
+  (`active.track = active.border[0]`, `active.toolbar = track[0].toolbar`) before
+  running `onActivate`: without this, `indexOf` still misses even for the deferred
+  preview (proxied border vs. plain track).
+- Catalogue `onDrop` inserts the session item unconditionally when no preview was
+  committed: the old seed-border `===` guard fails under `$state` proxies even when
+  the session never moved, silently dropping the insert. Double-insert is impossible
+  (`delete palettes.dragging` makes a second drop fall through to the spent MIME
+  path).
 
 ## 14. Tooling conventions
 

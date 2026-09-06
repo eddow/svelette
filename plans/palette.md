@@ -91,10 +91,10 @@ Every export of `@sursaut/ui/palette` must have a Svelte equivalent. Source: `ui
 - [x] `Parking`
 - [x] `beginPaletteCatalogInsertDrag`
 
-### Drawer editor (`drawer-editor.svelte.ts`)
-- [ ] `createPaletteDrawerEditor`
-- [ ] `paletteDefaultDrawerEditor`
-- [ ] `paletteDrawerCollapse` (shared `$state` signal)
+### Drawer editor (`drawer-editor.svelte.ts`) — done
+- [x] `createPaletteDrawerEditor`
+- [x] `paletteDefaultDrawerEditor`
+- [x] `paletteDrawerCollapse` (shared `$state` signal)
 
 ## 5. Phases
 
@@ -169,16 +169,72 @@ Every export of `@sursaut/ui/palette` must have a Svelte equivalent. Source: `ui
 ### Phase 8 — CSS ✅ (base port done; see `docs/architecture.md` §11)
 - [x] Import the stylesheets in the demo layout (`+page.svelte` imports `palette.css` +
       `palette-default.css`)
-- [x] Edit-mode hover states unblocked: `Ide`/`Toolbar` exist (Phase 5); verify visually in Phase 9
+- [x] Edit-mode hover states verified live: `paletteRoot` toggles `editing`/`palette-editing`
+      + `data-editing`, ported `.palette-ide.editing …` rules render hover/active chrome
+      (verified in the Phase 9 demo via the edit toggle)
 
-### Phase 9 — Demo + docs migration
-- [ ] Demo page in `src/routes/` exercising all four regions, edit mode, command box, drawer
-- [ ] Migrate this plan's "done" details into `docs/`; remove completed checkboxes
+### Phase 9 — Demo + docs migration ✅ (complete; see `docs/architecture.md` §18)
+- [x] Demo page in `src/routes/` exercising all four regions, edit mode, command box, drawer
+- [x] Migrate this plan's "done" details into `docs/`; remove completed checkboxes
+- [x] `terminal` opens a console-like command widget (`src/lib/demo/ConsoleOverlay.svelte` +
+      `console.svelte.ts`: popup command-box overlay with search + execute, not just
+      `lastAction = 'Terminal opened'`)
+- [x] Checkbutton toggle inside the console widget: *Command* (search/run) ↔ *Toolbar edition*
+      (add-to-toolbar) modes (checkbox bound to `palettes.editing`, switches the active box)
+- [x] Add-to-toolbar flow demonstrated: `paletteAddItemEntries` + `paletteDerivedVariants` +
+      `paletteCatalogEntries` + drag-to-toolbar (catalogue + add-item variant preview)
+- [x] Native HTML5 catalogue drag (`PALETTE_CATALOG_DRAG_MIME`,
+      `notifyPaletteCatalogNativeDragStarted` + `beginPaletteCatalogInsertDrag` on `dragstart`;
+      drop handled by the existing `bindPaletteCatalogDrop` zones)
+- [x] `button` editor (run family) in the demo config (bottom track: `terminal`/`presentation`/
+      `inspectPreset` buttons)
+- [x] `radio` editor (enum family) in the demo config (bottom track: `theme`/`mode` radios)
+- [x] `Parking` rendered in the demo (console popup seeds parked toolbars from the live top
+      border minus the command box; remove/restore via parking drop zones)
+- [x] Serialization persistence: `serializePaletteLayout` → localStorage →
+      `hydratePaletteLayout` round-trip + "Save layout" / "Reset layout" (`+page.svelte`)
+- [x] Configurator structural actions: `moveForward`/`moveBackward`/`removable` + keyboard-binding
+      display from `describeItemConfiguration` (inspector resolves the live toolbar/index by
+      identity; move/remove mutate the real layout)
+- [x] Command-box execution path for state tools (e.g. "Set Theme to Dark", "Increase Font Size")
+      reachable via both the toolbar command box and the console widget (`paletteCommandEntries`
+      run entries in both)
+- [x] Fix SSR hydration mismatch: `readStoredLayout()` runs at top-level init (guarded only by
+      `typeof localStorage !== 'undefined'`), so server renders `initialIdeConfig` while client
+      hydrates a stored layout → hydration mismatch. Fixed: seed `structuredClone(initialIdeConfig.*)`
+      `$state` at init; load + splice stored borders in `onMount` (also fixes a latent bug where
+      `$state(initialIdeConfig.*)` mutated the shared module object on edit).
+- [x] Exclude `terminal` from the console's command entries (`paletteCommandEntries({ palette,
+      excludeTools: ['terminal'] })`) — today the console lists "Terminal", and executing it from
+      inside the console re-opens then closes it. Fixed for run/add/catalogue entries (matches the
+      reference `excludeTools` on `demoCommandEntries` + `demoAddEntries`).
+- [x] Drop inert `svelte-ignore state_referenced_locally` on `runEntries`/`addEntries`/
+      `catalogEntries` (they read a module import, not a rune/prop — the warning never fires).
+- [x] Verified live in browser (dev server): all four regions + all 12 editors render; console
+      opens via terminal, `terminal` excluded from entries, `Parking` renders, checkbutton
+      command→add-to-toolbar swaps box + catalogue, derived-variant card + value input appear.
 
-### Phase 10 — Full test parity + e2e
+### Phase 10 — Full test parity + e2e (done; see `docs/architecture.md` §19–§20)
 - [x] Port remaining specs: `components` (13), `item-movement` (13)
       (`keys`, `palette`, `serialization`, `command-box` already ported in Phases 2–4)
-- [ ] Playwright e2e: edit mode toggle, drag reorder, command box search/execute, drawer open/close
+- [x] Playwright e2e: edit mode toggle, command box search/execute, drawer open/close,
+      inspector shortcut + structural actions, layout persist/restore (`e2e/palette.spec.ts`, 5 tests)
+- [x] Playwright e2e for demo additions: open console via backtick + Terminal button,
+      command execute, checkbutton add-to-toolbar, add flow entry + variant, Escape close
+      (`e2e/console.spec.ts`, 5 tests)
+- [x] e2e drag reorder: synthetic pointer drag of a `.toolbar-item-guard` (edit mode →
+      `PointerEvent('pointerdown')` on the guard → `pointermove`/`pointerup` on `window`
+      with a shared `pointerId`) asserting `[commandBox, notifications, layout, theme]` →
+      `[commandBox, layout, theme, notifications]`. Fixed two engine bugs on the way:
+      deferred item preview to activation + `$state` proxy re-link (`layout.svelte.ts`).
+- [x] e2e catalogue drop: synthetic `dragstart`/`dragover`/`drop` with a `dataTransfer`
+      stub (plain `Event`s — `new DragEvent` rejects non-native transfers) landing the
+      row's item in the first `.toolbar-item-space` (count + 1). Fixed the seed-border
+      `===` guard that silently dropped the insert under `$state` proxies.
+- [x] Flake: toolbar command-box e2e failed once under 11-worker `fullyParallel` (result
+      `toBeVisible` timeout; 2/2 full + 3/3 isolated runs green since). Mitigated by
+      waiting for `.palette-default-command-popover` before asserting the result (the
+      `inline-size` 140ms transition delays popover visibility vs. actionability).
 
 ## 6. Reactivity conventions
 

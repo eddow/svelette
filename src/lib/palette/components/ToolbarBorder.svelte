@@ -47,6 +47,7 @@
 		el?.class
 	]}
 	data-palette-id={palette.id}
+	data-region={region}
 >
 	{#if !inverse}
 		<div
