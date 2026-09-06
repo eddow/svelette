@@ -971,7 +971,14 @@
 	pointer-events: none;
 }
 
-/* ── Light Theme ── */
+/* ── Light Theme ──
+ *
+ * The base theme above is dark. These overrides apply under a
+ * `.palette-default-theme-light` ancestor — the demo syncs that class onto
+ * `<html>` so it also covers body-portaled drawer popups. Keep this list in
+ * sync with every `background`/`border-color` rule above (plus the drawer
+ * popup shell in `palette.css`, which is headless layout + dark chrome).
+ */
 
 .palette-default-theme-light .palette-default-tool,
 .palette-default-theme-light .palette-default-trigger,
@@ -982,6 +989,8 @@
 .palette-default-theme-light .palette-default-slider,
 .palette-default-theme-light .palette-default-stepper,
 .palette-default-theme-light .palette-default-stars,
+.palette-default-theme-light .palette-default-segmented,
+.palette-default-theme-light .palette-default-split,
 .palette-default-theme-light .palette-default-command-panel,
 .palette-default-theme-light .palette-default-command-shell,
 .palette-default-theme-light .palette-default-command-chip,
@@ -989,10 +998,41 @@
 .palette-default-theme-light .palette-default-command-result,
 .palette-default-theme-light .palette-default-select select,
 .palette-default-theme-light .palette-default-menu,
-.palette-default-theme-light .palette-default-command-popover {
+.palette-default-theme-light .palette-default-command-popover,
+.palette-default-theme-light .palette-default-command-parking,
+.palette-default-theme-light .palette-default-stepper-value,
+.palette-default-theme-light .palette-default-config-value input,
+.palette-default-theme-light .palette-default-config-value select,
+.palette-default-theme-light .palette-default-add-variant,
+.palette-default-theme-light .palette-default-add-inline-value > input,
+.palette-default-theme-light .palette-default-add-inline-value > select,
+.palette-default-theme-light .palette-default-command-close,
+.palette-default-theme-light.svelette-palette-drawer__popup,
+.palette-default-theme-light .svelette-palette-drawer__popup {
 	border-color: rgba(148, 163, 184, 0.9);
 	background: rgba(241, 245, 249, 0.96);
 	color: #0f172a;
+}
+
+/* Drawer popups + command panels use flat fills in the base theme (not the
+ * tool gradient), so re-assert the flat fill here — otherwise the gradient
+ * from the grouped selector above leaks through. */
+.palette-default-theme-light .palette-default-command-panel,
+.palette-default-theme-light .palette-default-command-popover,
+.palette-default-theme-light .palette-default-menu,
+.palette-default-theme-light.svelette-palette-drawer__popup,
+.palette-default-theme-light .svelette-palette-drawer__popup {
+	background: rgba(255, 255, 255, 0.98);
+}
+
+.palette-default-theme-light .palette-default-icon {
+	color: #475569;
+}
+
+.palette-default-theme-light .palette-default-command-input::placeholder,
+.palette-default-theme-light .palette-default-config-value input::placeholder,
+.palette-default-theme-light .palette-default-add-inline-value > input::placeholder {
+	color: #64748b;
 }
 
 .palette-default-theme-light .palette-default-tool.is-selected,

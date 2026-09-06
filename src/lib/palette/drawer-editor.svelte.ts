@@ -16,7 +16,7 @@
  * - `JSX.Element` icon renderer / `renderTrigger` / per-instance CSS classes →
  *   dropped. Icons are `PaletteIcon` (`string | Component`, rendered by the
  *   trigger itself); styling is global (`svelette-palette-drawer__*` classes in
- *   `styles/palette.css`, themed in `palette-default.css`) per the repo rule
+ *   `styles/palette.css`, themed in the head's `head-default.css`) per the repo rule
  *   that CSS is always global — per-instance `triggerClass` / `overlayClass` /
  *   `popupClass` options have no Svelte equivalent and are intentionally omitted
  *

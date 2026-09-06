@@ -37,7 +37,12 @@ export {
 	paletteDefaultDrawerEditor,
 	paletteDrawerCollapse,
 } from './drawer-editor.svelte'
-export { createPaletteKeys, normalizePaletteKeystroke, paletteKeystrokeFromEvent } from './keys'
+export {
+	createPaletteKeys,
+	isPaletteKeys,
+	normalizePaletteKeystroke,
+	paletteKeystrokeFromEvent,
+} from './keys'
 export {
 	actualTrackSpaceAt,
 	beginPaletteCatalogInsertDrag,
@@ -92,6 +97,31 @@ export {
 	valueActions,
 	valueReader,
 } from './palette.svelte'
+export {
+	type ButtonPresenter,
+	buttonPresenter,
+	type CommandBoxPresenter,
+	type ConfiguratorPresenter,
+	commandBoxPresenter,
+	configuratorPresenter,
+	type HeadChoiceDisplay,
+	type HeadEnumSubsetConfig,
+	type HeadItemConfigBase,
+	handlePaletteCommandBoxInputKeydown as handlePresenterCommandBoxInputKeydown,
+	handlePaletteCommandChipKeydown as handlePresenterCommandChipKeydown,
+	headLayoutFromSurface,
+	headMeta,
+	headRegionFromScope,
+	headTooltip,
+	type SelectOption,
+	type SelectPresenter,
+	type SliderPresenter,
+	selectPresenter,
+	setPaletteCommandBoxInput as setPresenterCommandBoxInput,
+	sliderPresenter,
+	type TogglePresenter,
+	togglePresenter,
+} from './presenters.svelte'
 export type {
 	PaletteAnyTool,
 	PaletteBase,

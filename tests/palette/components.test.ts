@@ -7,7 +7,6 @@ import {
 	paletteRoot,
 	palettes,
 } from '$lib/palette/index.svelte'
-import { createPaletteKeys } from '$lib/palette/keys'
 import type { PaletteConfig } from '$lib/palette/types'
 import IdeProbe from './IdeProbe.svelte'
 import PaletteItemDragProbe from './PaletteItemDragProbe.svelte'
@@ -25,9 +24,9 @@ function testPalette(run: () => void): Palette {
 				run,
 			},
 		},
-		keys: createPaletteKeys({
+		keys: {
 			N: 'run',
-		}),
+		},
 	})
 }
 
@@ -104,9 +103,9 @@ describe('paletteRoot', () => {
 					run,
 				},
 			},
-			keys: createPaletteKeys({
+			keys: {
 				N: 'run',
-			}),
+			},
 		} satisfies PaletteConfig)
 		render(PaletteRootProbe, { props: { palette } })
 		const root = screen.getByTestId('palette-root')
@@ -126,9 +125,9 @@ describe('paletteRoot', () => {
 			tools: {
 				notifications,
 			},
-			keys: createPaletteKeys({
+			keys: {
 				N: 'notifications',
-			}),
+			},
 		} satisfies PaletteConfig)
 		render(PaletteRootProbe, { props: { palette } })
 		const root = screen.getByTestId('palette-root')
@@ -311,9 +310,9 @@ describe('paletteRoot', () => {
 					run,
 				},
 			},
-			keys: createPaletteKeys({
+			keys: {
 				N: 'run',
-			}),
+			},
 			editor: () => ParkingEditorStub as never,
 		} satisfies PaletteConfig)
 		palettes.editing = palette
@@ -334,9 +333,9 @@ describe('paletteRoot', () => {
 					run() {},
 				},
 			},
-			keys: createPaletteKeys({
+			keys: {
 				N: 'run',
-			}),
+			},
 			editor: () => ParkingEditorStub as never,
 		} satisfies PaletteConfig)
 		palettes.editing = palette

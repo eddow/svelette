@@ -16,7 +16,7 @@
 		SerializedPaletteLayout
 	} from '$lib/palette/types'
 	import '$lib/palette/styles/palette.css'
-	import '$lib/palette/styles/palette-default.css'
+	import '$lib/head/styles/head-default.css'
 
 	const LAYOUT_STORAGE_KEY = 'svelette-demo-layout-v1'
 
@@ -39,6 +39,32 @@
 	const right = $state(structuredClone(initialIdeConfig.right))
 	const bottom = $state(structuredClone(initialIdeConfig.bottom))
 	let layoutRestored = $state(false)
+
+	// Theme resolution: `demoState.theme` is the setting (`light`/`dark`/`system`);
+	// `resolvedTheme` is what actually renders. `system` follows the OS via
+	// `prefers-color-scheme`. The `palette-default-theme-light` CSS class (the
+	// only theme override in the head theme `head-default.css`; the base is
+	// dark) is synced onto `<html>` so it also covers body-portaled drawer
+	// popups, which live outside `<main>`.
+	let systemPrefersLight = $state(false)
+	$effect(() => {
+		const query = window.matchMedia('(prefers-color-scheme: light)')
+		systemPrefersLight = query.matches
+		const onChange = (event: MediaQueryListEvent) => {
+			systemPrefersLight = event.matches
+		}
+		query.addEventListener('change', onChange)
+		return () => query.removeEventListener('change', onChange)
+	})
+	const resolvedTheme = $derived<'light' | 'dark'>(
+		demoState.theme === 'system' ? (systemPrefersLight ? 'light' : 'dark') : demoState.theme
+	)
+	$effect(() => {
+		const root = document.documentElement
+		root.classList.toggle('palette-default-theme-light', resolvedTheme === 'light')
+		root.dataset.theme = resolvedTheme
+		root.style.colorScheme = resolvedTheme
+	})
 
 	// Restore a saved layout client-side after mount: SSR always renders the
 	// initial layout (no hydration mismatch), then the stored borders are
@@ -215,7 +241,7 @@
 				<div>
 					<strong>Compact palette playground</strong>
 					<span
-						>Toolbar-first examples: icons, tooltips, split controls, select, slider, stars.</span
+						>Toolbar-first examples: icons, tooltips, select, button, toggle, and a slider override.</span
 					>
 				</div>
 				<div class="demo-chip">{demoState.notifications ? '◉ Enabled' : '○ Muted'}</div>
@@ -301,6 +327,13 @@
 		gap: 0.75rem;
 		min-height: 100vh;
 		font-family: system-ui, sans-serif;
+		background: #020617;
+		color: #e2e8f0;
+	}
+	/* Light mode follows the resolved theme on `<html data-theme>` (see script). */
+	:global(html[data-theme='light']) main {
+		background: #f1f5f9;
+		color: #0f172a;
 	}
 	.demo-bar {
 		display: flex;
@@ -323,9 +356,14 @@
 		display: grid;
 		gap: 0.75rem;
 		padding: 1rem;
-		border: 1px solid #cbd5e1;
+		border: 1px solid rgba(71, 85, 105, 0.65);
 		border-radius: 12px;
 		max-width: 32rem;
+		background: rgba(15, 23, 42, 0.64);
+	}
+	:global(html[data-theme='light']) .demo-inspector {
+		border-color: #cbd5e1;
+		background: #ffffff;
 	}
 	.demo-inspector-row {
 		display: flex;
@@ -355,8 +393,18 @@
 		grid-template-columns: 1fr auto;
 		align-items: center;
 	}
+	:global(html[data-theme='light']) .demo-hero,
+	:global(html[data-theme='light']) .demo-panel {
+		border-color: rgba(148, 163, 184, 0.9);
+		background: #ffffff;
+		box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+		color: #0f172a;
+	}
 	.demo-hero span {
 		color: #94a3b8;
+	}
+	:global(html[data-theme='light']) .demo-hero span {
+		color: #475569;
 	}
 	.demo-chip {
 		display: inline-flex;
@@ -368,6 +416,11 @@
 		border: 1px solid rgba(96, 165, 250, 0.24);
 		color: #bfdbfe;
 	}
+	:global(html[data-theme='light']) .demo-chip {
+		background: rgba(241, 245, 249, 0.96);
+		border-color: rgba(148, 163, 184, 0.9);
+		color: #0f172a;
+	}
 	.demo-strip {
 		display: flex;
 		flex-wrap: wrap;
@@ -376,6 +429,10 @@
 		border: 1px dashed rgba(71, 85, 105, 0.9);
 		border-radius: 14px;
 		background: rgba(15, 23, 42, 0.56);
+	}
+	:global(html[data-theme='light']) .demo-strip {
+		border-color: rgba(148, 163, 184, 0.9);
+		background: rgba(241, 245, 249, 0.96);
 	}
 	.demo-pill {
 		display: inline-flex;
@@ -394,6 +451,9 @@
 		text-transform: uppercase;
 		color: #94a3b8;
 	}
+	:global(html[data-theme='light']) .demo-panel-title {
+		color: #475569;
+	}
 	.demo-state-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
@@ -408,11 +468,18 @@
 		border-radius: 11px;
 		background: rgba(15, 23, 42, 0.64);
 	}
+	:global(html[data-theme='light']) .demo-state-row {
+		border-color: rgba(148, 163, 184, 0.9);
+		background: rgba(241, 245, 249, 0.96);
+	}
 	.demo-state-key {
 		font-size: 0.74rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: #94a3b8;
+	}
+	:global(html[data-theme='light']) .demo-state-key {
+		color: #475569;
 	}
 	.demo-state-value {
 		font-weight: 600;

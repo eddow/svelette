@@ -15,7 +15,6 @@ import {
 	parsePaletteCatalogDragPayload,
 	serializePaletteCatalogDragPayload,
 } from '$lib/palette/index.svelte'
-import { createPaletteKeys } from '$lib/palette/keys'
 import type { PaletteConfig, PaletteEditorComponent } from '$lib/palette/types'
 
 const StubEditor = (() => {}) as unknown as PaletteEditorComponent
@@ -427,22 +426,22 @@ describe('paletteCommandBoxModel', () => {
 					run: reset,
 				},
 			},
-			keys: createPaletteKeys({
+			keys: {
 				R: 'reset',
-				T: 'theme|light',
+				T: 'theme=light',
 				'+': 'fontSize:inc',
-			}),
+			},
 		} satisfies PaletteConfig)
 		const entries = paletteCommandEntries({ palette })
 
 		expect(entries.find((entry) => entry.id === 'reset')?.label).toBe('Reset Defaults')
-		expect(entries.find((entry) => entry.id === 'theme|light')?.label).toBe('Set Theme to Light')
-		expect(entries.find((entry) => entry.id === 'theme|light')?.meta).toBe('T')
+		expect(entries.find((entry) => entry.id === 'theme=light')?.label).toBe('Set Theme to Light')
+		expect(entries.find((entry) => entry.id === 'theme=light')?.meta).toBe('T')
 		expect(entries.find((entry) => entry.id === 'fontSize:inc')?.label).toBe('Increase Font Size')
-		expect(entries.find((entry) => entry.id === 'notifications|false')?.label).toBe(
+		expect(entries.find((entry) => entry.id === 'notifications=false')?.label).toBe(
 			'Disable Notifications'
 		)
-		expect(entries.find((entry) => entry.id === 'theme|light')?.keywords).toContain('day')
+		expect(entries.find((entry) => entry.id === 'theme=light')?.keywords).toContain('day')
 	})
 
 	it('uses execute phrasing in run mode and preset labels in catalog mode for enum/boolean', () => {
@@ -471,17 +470,17 @@ describe('paletteCommandBoxModel', () => {
 					default: true,
 				},
 			},
-			keys: createPaletteKeys({}),
+			keys: {},
 		} satisfies PaletteConfig)
 
 		const runEntries = paletteCommandEntries({ palette })
 		const catalogCommands = paletteCommandEntries({ palette, mode: 'catalog' })
-		expect(runEntries.find((entry) => entry.id === 'theme|light')?.label).toBe('Set Theme to Light')
-		expect(runEntries.find((entry) => entry.id === 'notifications|false')?.label).toBe(
+		expect(runEntries.find((entry) => entry.id === 'theme=light')?.label).toBe('Set Theme to Light')
+		expect(runEntries.find((entry) => entry.id === 'notifications=false')?.label).toBe(
 			'Disable Notifications'
 		)
 		expect(catalogCommands.find((entry) => entry.id === 'theme:catalog-enum')?.label).toBe('Theme')
-		expect(catalogCommands.find((entry) => entry.id === 'notifications|true')?.label).toBe(
+		expect(catalogCommands.find((entry) => entry.id === 'notifications=true')?.label).toBe(
 			'Notifications → On (preset)'
 		)
 		expect(catalogCommands.find((entry) => entry.id === 'theme:catalog-enum')?.meta).toContain(
@@ -506,12 +505,12 @@ describe('paletteCommandBoxModel', () => {
 					],
 				},
 			},
-			keys: createPaletteKeys({}),
+			keys: {},
 		} satisfies PaletteConfig)
 
 		const runEntries = paletteCommandEntries({ palette })
-		expect(runEntries.some((entry) => entry.id === 'mode|a')).toBe(true)
-		expect(runEntries.some((entry) => entry.id === 'mode|b')).toBe(true)
+		expect(runEntries.some((entry) => entry.id === 'mode=a')).toBe(true)
+		expect(runEntries.some((entry) => entry.id === 'mode=b')).toBe(true)
 
 		const catalogCmd = paletteCommandEntries({ palette, mode: 'catalog' }).find(
 			(entry) => entry.id === 'mode:catalog-enum'
@@ -544,12 +543,12 @@ describe('paletteCommandBoxModel', () => {
 					],
 				},
 			},
-			keys: createPaletteKeys({}),
+			keys: {},
 		} satisfies PaletteConfig)
 
 		const catalog = paletteCommandEntries({ palette, mode: 'catalog' })
 		expect(catalog.some((entry) => entry.id === 'mode:catalog-enum')).toBe(false)
-		expect(catalog.find((entry) => entry.id === 'mode|a')?.label).toBe('Mode → Alpha (preset)')
+		expect(catalog.find((entry) => entry.id === 'mode=a')?.label).toBe('Mode → Alpha (preset)')
 
 		const add = paletteAddItemEntries({ palette })
 		expect(add.some((entry) => entry.id === 'tool:mode')).toBe(true)
@@ -572,7 +571,7 @@ describe('paletteCommandBoxModel', () => {
 					],
 				},
 			},
-			keys: createPaletteKeys({}),
+			keys: {},
 			editorDefaults: { enum: 'select' },
 			editors: {
 				enum: {
@@ -618,7 +617,7 @@ describe('paletteCommandBoxModel', () => {
 					run() {},
 				},
 			},
-			keys: createPaletteKeys({ R: 'reset' }),
+			keys: { R: 'reset' },
 			editors: {
 				item: {
 					commandBox: {
@@ -661,7 +660,7 @@ describe('paletteCommandBoxModel', () => {
 					run() {},
 				},
 			},
-			keys: createPaletteKeys({ R: 'reset' }),
+			keys: { R: 'reset' },
 			editorDefaults: { run: 'button' },
 			editors: {
 				run: {
@@ -677,7 +676,7 @@ describe('paletteCommandBoxModel', () => {
 	})
 
 	it('serializes and parses catalogue drag payloads', () => {
-		const specPayload = { kind: 'spec' as const, spec: 'theme|dark' }
+		const specPayload = { kind: 'spec' as const, spec: 'theme=dark' }
 		const variantPayload = {
 			kind: 'variant' as const,
 			variant: {
@@ -712,7 +711,7 @@ describe('paletteCommandBoxModel', () => {
 		}
 		const palette = new Palette({
 			tools,
-			keys: createPaletteKeys({}),
+			keys: {},
 		} satisfies PaletteConfig)
 
 		// Entries capture the spec, not the tool: if the tool behind `reset`
@@ -759,7 +758,7 @@ describe('paletteCommandBoxModel', () => {
 					step: 1,
 				},
 			},
-			keys: createPaletteKeys({}),
+			keys: {},
 			editors: {
 				item: {
 					commandBox: {

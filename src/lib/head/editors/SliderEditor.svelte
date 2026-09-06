@@ -16,15 +16,9 @@
 	const view = $derived(sliderPresenter(context))
 </script>
 
-<!--
-	Demo override: same variant key (`number.slider`) as the default head, so the
-	per-family merge `{ ...headEditors.number, ...demoEditors.number }` replaces the
-	head's slider. Visually distinct from the head: a trailing numeric value badge.
--->
 <label
 	class={[
 		'palette-default-slider',
-		'palette-default-slider-badged',
 		`palette-default-tone-${view.tone}`,
 		`palette-default-layout-${view.direction}`,
 		`palette-default-region-${view.region}`
@@ -44,15 +38,4 @@
 			onChange?.(next)
 		}}
 	/>
-	<span class="palette-default-slider-badge">{view.value}</span>
 </label>
-
-<style>
-	.palette-default-slider-badge {
-		min-width: 1.5em;
-		text-align: center;
-		font-variant-numeric: tabular-nums;
-		font-weight: 600;
-		opacity: 0.9;
-	}
-</style>

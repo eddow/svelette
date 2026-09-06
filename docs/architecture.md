@@ -1,6 +1,11 @@
 # Architecture — svelette
 
 Foundational decisions for the Svelte 5 re-implementation of `@sursaut/ui/palette`.
+Start with `README.md`, then `docs/getting-started.md`. Topic guides:
+`core-concepts.md` (tools, registry, scope), `layout-and-drag.md`,
+`command-box.md`, `theming.md`, `testing.md`, `using-the-default-head.md`,
+`creating-a-head.md`, `head-extraction.md` (what was done). This file keeps the decisions,
+runtime mapping, and phase history.
 
 ## 1. Identity
 
@@ -119,9 +124,9 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 ## 11. Styling — global CSS, never scoped or injected
 
 - CSS is **always global** unless true component scoping is required. Palette styles live in
-  `src/lib/palette/styles/` (`palette.css` headless layout + edit-mode affordances,
-  `palette-default.css` demo theme) and are imported once by the app — never injected at
-  runtime, never duplicated per instance.
+  `src/lib/palette/styles/` (`palette.css` headless layout + edit-mode affordances);
+  the default visual theme lives in the head (`src/lib/head/styles/head-default.css`).
+  Both are imported once by the app — never injected at runtime, never duplicated per instance.
 - Selectors stay specific through class hierarchy (`.palette-ide.editing .toolbar:hover::before`),
   never bare names (`.active {`). No `data-palette-id` scoping: only one palette is editable at
   a time (`palettes.editing`), so per-instance `<style>` elements are pure overhead.

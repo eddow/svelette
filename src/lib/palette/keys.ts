@@ -78,6 +78,19 @@ export function paletteKeystrokeFromEvent(event: KeyboardEvent): PaletteKeystrok
 }
 
 /**
+ * Type guard for a prebuilt `PaletteKeys` registry (vs. a raw bindings map).
+ */
+export function isPaletteKeys(value: unknown): value is PaletteKeys {
+	if (typeof value !== 'object' || value === null) return false
+	const record = value as Record<string, unknown>
+	return (
+		typeof record.resolve === 'function' &&
+		typeof record.findByTool === 'function' &&
+		typeof record.bindings === 'object'
+	)
+}
+
+/**
  * Build a normalized keyboard binding registry for a palette.
  */
 export function createPaletteKeys(bindings?: PaletteKeyBindings): PaletteKeys {

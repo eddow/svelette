@@ -15,7 +15,6 @@ import {
 	resolvePaletteEditor,
 	surfaceContextFromScope,
 } from '$lib/palette/index.svelte'
-import { createPaletteKeys } from '$lib/palette/keys'
 import type {
 	PaletteConfig,
 	PaletteConfiguratorComponent,
@@ -59,11 +58,11 @@ function createPalette(): Palette {
 				],
 			},
 		},
-		keys: createPaletteKeys({
+		keys: {
 			R: 'reset',
-			N: 'notifications|true',
+			N: 'notifications=true',
 			'+': 'fontSize:inc',
-		}),
+		},
 	})
 }
 
@@ -101,12 +100,18 @@ describe('palette engine', () => {
 		expect(palette.tool('reset')).toBe(palette.tools.reset)
 		expect(paletteTool(palette, 'reset')).toBe(palette.tools.reset)
 
-		const setterRunner = palette.tool('notifications|true')
+		const setterRunner = palette.tool('notifications=true')
 		if (!isRunTool(setterRunner)) throw new Error('Expected setter runner')
 		setterRunner.run()
 		expect(notifications.value).toBe(true)
 		setterRunner.run()
 		expect(notifications.value).toBe(false)
+
+		// Legacy `|` setter spelling still resolves (fresh runner: false → true).
+		const legacySetter = palette.tool('notifications|true')
+		if (!isRunTool(legacySetter)) throw new Error('Expected setter runner')
+		legacySetter.run()
+		expect(notifications.value).toBe(true)
 
 		const actionRunner = palette.tool('fontSize:inc')
 		if (!isRunTool(actionRunner)) throw new Error('Expected action runner')
@@ -120,7 +125,7 @@ describe('palette engine', () => {
 		const { notifications } = editableTools(palette)
 		notifications.value = true
 
-		const setterRunner = paletteTool(palette, 'notifications|false')
+		const setterRunner = paletteTool(palette, 'notifications=false')
 		if (!isRunTool(setterRunner)) throw new Error('Expected setter runner')
 
 		setterRunner.run()
@@ -171,7 +176,7 @@ describe('palette engine', () => {
 			},
 		})
 
-		const setterRunner = paletteTool(palette, 'notifications|true')
+		const setterRunner = paletteTool(palette, 'notifications=true')
 		if (!isRunTool(setterRunner)) throw new Error('Expected setter runner')
 		setterRunner.run()
 		expect(setterHook).toHaveBeenCalledWith(true)
@@ -186,7 +191,7 @@ describe('palette engine', () => {
 		const palette = createPalette()
 
 		expect(() => paletteTool(palette, 'missing')).toThrow(PaletteError)
-		expect(() => paletteTool(palette, 'reset|true')).toThrow(PaletteError)
+		expect(() => paletteTool(palette, 'reset=true')).toThrow(PaletteError)
 		expect(() => paletteTool(palette, 'fontSize:missing')).toThrow(PaletteError)
 		expect(() => paletteTool(palette, 'theme:missing')).toThrow(PaletteError)
 	})
@@ -195,7 +200,7 @@ describe('palette engine', () => {
 		const palette = createPalette()
 
 		expect(() => paletteTool(palette, 'notifications:inc')).toThrow(PaletteError)
-		expect(() => paletteTool(palette, 'fontSize|true')).toThrow(PaletteError)
+		expect(() => paletteTool(palette, 'fontSize=true')).toThrow(PaletteError)
 	})
 
 	it('resolves editor specs from item or default variant', () => {
@@ -382,8 +387,8 @@ describe('palette engine', () => {
 		// Without the effect this port keeps the stale entry.
 		const palette = createPalette()
 		const { fontSize } = editableTools(palette)
-		const to11 = paletteTool(palette, 'fontSize|11')
-		const to12 = paletteTool(palette, 'fontSize|12')
+		const to11 = paletteTool(palette, 'fontSize=11')
+		const to12 = paletteTool(palette, 'fontSize=12')
 		if (!isRunTool(to11) || !isRunTool(to12)) throw new Error('Expected setter runners')
 
 		// fontSize starts at 10 (default 10).

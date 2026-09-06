@@ -500,7 +500,7 @@ export function paletteCommandEntries<TSchema extends PaletteSchema>(options: {
 				[true, 'Enable', ['enable', 'on', 'true']],
 				[false, 'Disable', ['disable', 'off', 'false']],
 			] as const) {
-				const spec = `${toolId}|${value}`
+				const spec = `${toolId}=${value}`
 				const presetLabel = value ? 'On' : 'Off'
 				entries.push(
 					generatedCommandEntry({
@@ -557,7 +557,7 @@ export function paletteCommandEntries<TSchema extends PaletteSchema>(options: {
 			}
 			for (const value of tool.values) {
 				const valueLabel = value.label ?? humanizeCommandText(value.value)
-				const spec = `${toolId}|${value.value}`
+				const spec = `${toolId}=${value.value}`
 				entries.push(
 					generatedCommandEntry({
 						id: spec,
@@ -677,7 +677,7 @@ function paletteToolbarItemFromSpec<TSchema extends PaletteSchema>(
 ): PaletteItem<TSchema> {
 	const editor = paletteDefaultEditorVariantForToolSpec(palette, spec)
 	const toolResolved = palette.tool(spec)
-	const baseId = spec.split(/[|]/)[0]?.split(':')[0] ?? spec
+	const baseId = spec.split(/[|=]/)[0]?.split(':')[0] ?? spec
 	const label =
 		'label' in toolResolved && typeof toolResolved.label === 'string'
 			? toolResolved.label

@@ -139,7 +139,7 @@
 		}
 		if (variant.kind !== 'set') return undefined
 		if (variant.valueType === 'boolean') {
-			const spec = `${toolId}|${consoleUi.booleanValue === 'true'}`
+			const spec = `${toolId}=${consoleUi.booleanValue === 'true'}`
 			return {
 				tool: spec,
 				editor: defaultEditorForToolId(spec),
@@ -151,7 +151,7 @@
 		if (variant.valueType === 'number') {
 			const numeric = Number(rawValue)
 			if (!Number.isFinite(numeric)) return undefined
-			const spec = `${toolId}|${numeric}`
+			const spec = `${toolId}=${numeric}`
 			return {
 				tool: spec,
 				editor: defaultEditorForToolId(spec),
@@ -161,7 +161,7 @@
 		if (variant.valueType === 'enum') {
 			const allowed = new Set((variant.values ?? []).map((value) => value.value))
 			if (!allowed.has(rawValue)) return undefined
-			const spec = `${toolId}|${rawValue}`
+			const spec = `${toolId}=${rawValue}`
 			return {
 				tool: spec,
 				editor: defaultEditorForToolId(spec),

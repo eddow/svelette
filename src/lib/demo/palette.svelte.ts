@@ -1,4 +1,4 @@
-import { createPaletteKeys } from '$lib/palette/keys'
+import { headEditors } from '$lib/head/registry'
 import { Palette } from '$lib/palette/palette.svelte'
 import type { PaletteBorders } from '$lib/palette/types'
 import { openConsole } from './console.svelte'
@@ -216,26 +216,36 @@ export const demoPalette = new Palette({
 			},
 		},
 	},
-	keys: createPaletteKeys({
+	keys: {
 		'`': 'terminal',
 		N: 'notifications',
-		L: 'layout|vertical',
-		H: 'layout|horizontal',
-		T: 'theme|light',
-		D: 'theme|dark',
-		S: 'theme|system',
+		L: 'layout=vertical',
+		H: 'layout=horizontal',
+		T: 'theme=light',
+		D: 'theme=dark',
+		S: 'theme=system',
 		'+': 'fontSize:inc',
 		'-': 'fontSize:dec',
 		']': 'gameSpeed:inc',
 		'[': 'gameSpeed:dec',
-		M: 'mode|command',
-		I: 'mode|inspect',
+		M: 'mode=command',
+		I: 'mode=inspect',
 		R: 'reset',
-	}),
+	},
 	get editable() {
 		return true
 	},
-	editors: demoEditors as never,
+	// Demo proves the default head: every family resolves through `headEditors`,
+	// and the single demo override (`number.slider`) replaces the head's slider
+	// because the demo spread comes last. `boolean`/`enum`/`item`/`run` have no
+	// demo variants at all, so they are the head verbatim.
+	editors: {
+		boolean: { ...headEditors.boolean, ...demoEditors.boolean },
+		enum: { ...headEditors.enum, ...demoEditors.enum },
+		number: { ...headEditors.number, ...demoEditors.number },
+		item: { ...headEditors.item, ...demoEditors.item },
+		run: { ...headEditors.run, ...demoEditors.run },
+	} as never,
 	editorDefaults: {
 		run: 'button',
 	},
@@ -258,13 +268,13 @@ export const initialIdeConfig: PaletteBorders = {
 					},
 					{
 						tool: 'layout',
-						editor: 'splitRadio',
-						config: { icon: '▤', label: 'Layout', hint: 'Split radio with quick apply + chooser' },
+						editor: 'segmented',
+						config: { icon: '▤', label: 'Layout', hint: 'Head segmented (enum)' },
 					},
 					{
 						tool: 'theme',
 						editor: 'select',
-						config: { icon: '🎨', label: 'Theme', hint: 'Compact text editor' },
+						config: { icon: '🎨', label: 'Theme', hint: 'Head select (enum)' },
 					},
 				],
 			},
@@ -273,13 +283,13 @@ export const initialIdeConfig: PaletteBorders = {
 				toolbar: [
 					{
 						tool: 'mode',
-						editor: 'splitRadio',
-						config: { icon: '⌘', label: 'Mode', hint: 'Split radio with icon labels' },
+						editor: 'segmented',
+						config: { icon: '⌘', label: 'Mode', hint: 'Head segmented (enum)' },
 					},
 					{
 						tool: 'fontSize',
 						editor: 'slider',
-						config: { icon: 'A', label: 'Font size', hint: 'Toolbar slider' },
+						config: { icon: 'A', label: 'Font size', hint: 'Demo slider override' },
 					},
 					{
 						editor: 'drawer',
@@ -291,16 +301,16 @@ export const initialIdeConfig: PaletteBorders = {
 							},
 							{
 								tool: 'gameSpeed',
-								editor: 'stars',
-								config: { icon: '★', label: 'Speed', hint: 'Drawer stars' },
+								editor: 'stepper',
+								config: { icon: '▶', label: 'Speed', hint: 'Head stepper (number)' },
 							},
 						],
 						config: { icon: '▤', label: 'Tools', hint: 'Drawer popup (vertical)' },
 					},
 					{
 						tool: 'reset',
-						editor: 'splitButton',
-						config: { icon: '↺', label: 'Reset', hint: 'Split action menu', tone: 'accent' },
+						editor: 'button',
+						config: { icon: '↺', label: 'Reset', hint: 'Head button (run)', tone: 'accent' },
 					},
 				],
 			},
@@ -313,26 +323,21 @@ export const initialIdeConfig: PaletteBorders = {
 				toolbar: [
 					{
 						tool: 'theme',
-						editor: 'flip',
-						config: {
-							icon: '🌓',
-							label: 'Theme',
-							hint: 'Single-button light/dark toggle',
-							keywords: ['light', 'dark'],
-						},
+						editor: 'segmented',
+						config: { icon: '🌓', label: 'Theme', hint: 'Head segmented (enum)' },
 					},
 					{
 						tool: 'mode',
-						editor: 'splitRadio',
-						config: { icon: '🎯', label: 'Mode', hint: 'Compact focus mode chooser' },
+						editor: 'select',
+						config: { icon: '🎯', label: 'Mode', hint: 'Head select (enum)' },
 					},
 					{
 						editor: 'drawer',
 						toolbar: [
 							{
 								tool: 'theme',
-								editor: 'segmented',
-								config: { icon: '🌓', label: 'Theme', hint: 'Nested drawer theme pills' },
+								editor: 'select',
+								config: { icon: '🌓', label: 'Theme', hint: 'Nested drawer select' },
 							},
 							{
 								tool: 'fontSize',
@@ -359,7 +364,7 @@ export const initialIdeConfig: PaletteBorders = {
 					{
 						tool: 'gameSpeed',
 						editor: 'stars',
-						config: { icon: '★', label: 'Speed', hint: 'Stars editor' },
+						config: { icon: '▶', label: 'Speed', hint: 'Demo stars rating' },
 					},
 				],
 			},
@@ -372,18 +377,13 @@ export const initialIdeConfig: PaletteBorders = {
 				toolbar: [
 					{
 						tool: 'gameSpeed',
-						editor: 'stars',
-						config: { icon: '▶', label: 'Playback speed', hint: 'Dense stars editor' },
+						editor: 'slider',
+						config: { icon: '▶', label: 'Playback speed', hint: 'Slider override' },
 					},
 					{
 						tool: 'theme',
-						editor: 'segmented',
-						config: {
-							icon: '🌓',
-							label: 'Theme',
-							hint: 'Theme pills',
-							values: ['light', 'dark', 'system'],
-						},
+						editor: 'select',
+						config: { icon: '🌓', label: 'Theme', hint: 'Head select (enum)' },
 					},
 				],
 			},
@@ -392,18 +392,13 @@ export const initialIdeConfig: PaletteBorders = {
 				toolbar: [
 					{
 						tool: 'layout',
-						editor: 'segmented',
-						config: {
-							icon: '▤',
-							label: 'Layout',
-							hint: 'Horizontal/vertical chips',
-							keywords: ['row', 'column'],
-						},
+						editor: 'select',
+						config: { icon: '▤', label: 'Layout', hint: 'Head select (enum)' },
 					},
 					{
 						tool: 'fontSize',
 						editor: 'slider',
-						config: { icon: 'A', label: 'Type scale', hint: 'Small range editor' },
+						config: { icon: 'A', label: 'Type scale', hint: 'Slider override' },
 					},
 				],
 			},
@@ -415,27 +410,27 @@ export const initialIdeConfig: PaletteBorders = {
 					{
 						tool: 'terminal',
 						editor: 'button',
-						config: { icon: '`', label: 'Terminal', hint: 'Open console overlay' },
+						config: { icon: '`', label: 'Terminal', hint: 'Head button (run)' },
 					},
 					{
 						tool: 'presentation',
 						editor: 'button',
-						config: { icon: '🎬', label: 'Present', hint: 'Apply presentation preset' },
+						config: { icon: '🎬', label: 'Present', hint: 'Head button (run)' },
 					},
 					{
 						tool: 'inspectPreset',
 						editor: 'button',
-						config: { icon: '🧭', label: 'Inspect', hint: 'Apply inspector preset' },
+						config: { icon: '🧭', label: 'Inspect', hint: 'Head button (run)' },
 					},
 					{
 						tool: 'theme',
-						editor: 'radio',
-						config: { icon: '🎨', label: 'Theme', hint: 'Radio enum editor' },
+						editor: 'select',
+						config: { icon: '🎨', label: 'Theme', hint: 'Head select (enum)' },
 					},
 					{
 						tool: 'mode',
-						editor: 'radio',
-						config: { icon: '⌘', label: 'Mode', hint: 'Radio enum editor' },
+						editor: 'select',
+						config: { icon: '⌘', label: 'Mode', hint: 'Head select (enum)' },
 					},
 				],
 			},

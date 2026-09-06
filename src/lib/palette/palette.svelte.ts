@@ -22,6 +22,7 @@
  * Pure algorithms (`resolveItemPlacementTarget`, serialization) are verbatim ports.
  */
 
+import { createPaletteKeys, isPaletteKeys } from './keys'
 import type {
 	PaletteBase,
 	PaletteBorder,
@@ -135,6 +136,24 @@ export class PaletteError extends Error {
 	}
 }
 
+/**
+ * Locate the setter separator in a tool spec.
+ *
+ * `=` is the preferred spelling (`theme=dark`); `|` is the legacy spelling
+ * (`theme|dark`), still accepted. Only a separator *before* any `:` counts:
+ * `fontSize:inc=fast` is an action (`inc`) with arg (`fast`), not a setter
+ * for tool `fontSize:inc`. When both `=` and `|` appear before any `:`,
+ * `=` wins so values containing `|` keep working.
+ */
+function findSetterSeparator(spec: string): number {
+	const colonIndex = spec.indexOf(':')
+	const equalsIndex = spec.indexOf('=')
+	if (equalsIndex >= 0 && (colonIndex < 0 || equalsIndex < colonIndex)) return equalsIndex
+	const pipeIndex = spec.indexOf('|')
+	if (pipeIndex >= 0 && (colonIndex < 0 || pipeIndex < colonIndex)) return pipeIndex
+	return -1
+}
+
 let nextPaletteId = 0
 
 /**
@@ -151,6 +170,12 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 
 	constructor(config: PaletteInstance<TSchema>['config']) {
 		this.config = config
+		// Accept a raw `{ keystroke: toolSpec }` map for convenience: normalize
+		// it once into a `PaletteKeys` registry so the rest of the runtime
+		// (`palette.keys.resolve/findByTool`) keeps working unchanged.
+		if (!isPaletteKeys(this.config.keys)) {
+			;(this.config as { keys: unknown }).keys = createPaletteKeys(this.config.keys)
+		}
 		this.id = `palette-${++nextPaletteId}`
 	}
 
@@ -159,7 +184,7 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 	}
 
 	get keys() {
-		return this.config.keys
+		return this.config.keys as import('./types').PaletteKeys
 	}
 
 	get editors() {
@@ -194,11 +219,14 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 
 	/**
 	 * Resolve a palette tool spec string into a palette tool object.
+	 *
+	 * Setter specs accept both `toolId=value` and the legacy `toolId|value`;
+	 * action specs use `toolId:action` (with optional `=arg`).
 	 */
 	tool(spec: string): PaletteToolOf<TSchema> {
-		const pipeIndex = spec.indexOf('|')
-		if (pipeIndex >= 0) {
-			const toolId = spec.slice(0, pipeIndex)
+		const setterIndex = findSetterSeparator(spec)
+		if (setterIndex >= 0) {
+			const toolId = spec.slice(0, setterIndex)
 			const tool = resolveEditableTool(this.tools, toolId)
 			return paletteSetterRunner(
 				this,
@@ -206,7 +234,7 @@ export class Palette<TSchema extends PaletteSchema = PaletteSchema>
 					TSchema['tools'],
 					PaletteEditableToolOf<TSchema>['type']
 				>,
-				spec.slice(pipeIndex + 1)
+				spec.slice(setterIndex + 1)
 			) as PaletteToolOf<TSchema>
 		}
 

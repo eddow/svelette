@@ -7,7 +7,6 @@ import {
 	paletteDefaultDrawerEditor,
 	paletteDrawerCollapse,
 } from '$lib/palette/index.svelte'
-import { createPaletteKeys } from '$lib/palette/keys'
 import { Palette } from '$lib/palette/palette.svelte'
 import type { PaletteEditorContext, PaletteSchema, PaletteToolbarItem } from '$lib/palette/types'
 
@@ -22,7 +21,7 @@ function drawerPalette(): Palette {
 				run() {},
 			},
 		},
-		keys: createPaletteKeys({ R: 'reset' }),
+		keys: { R: 'reset' },
 		editors: {
 			run: { button: { editor: (() => {}) as never } },
 			item: { drawer: paletteDefaultDrawerEditor as never },

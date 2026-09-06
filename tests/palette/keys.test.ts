@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
 	createPaletteKeys,
+	isPaletteKeys,
 	normalizePaletteKeystroke,
 	paletteKeystrokeFromEvent,
 } from '$lib/palette/keys'
+import { Palette } from '$lib/palette/palette.svelte'
 
 describe('palette keys', () => {
 	it('normalizes modifier aliases and ordering', () => {
@@ -73,5 +75,44 @@ describe('palette keys', () => {
 		expect(keys.resolve(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))).toBe(
 			'close'
 		)
+	})
+
+	it('accepts a raw bindings map in Palette config and normalizes it', () => {
+		const palette = new Palette({
+			tools: {
+				reset: {
+					label: 'Reset',
+					get can() {
+						return true
+					},
+					run() {},
+				},
+			},
+			keys: { 'cmd+shift+a': 'reset' },
+		})
+		expect(isPaletteKeys(palette.keys)).toBe(true)
+		expect(palette.keys.findByTool('reset')).toEqual(['Shift+Meta+A'])
+		expect(
+			palette.keys.resolve(
+				new KeyboardEvent('keydown', { key: 'a', shiftKey: true, metaKey: true, bubbles: true })
+			)
+		).toBe('reset')
+	})
+
+	it('keeps a prebuilt PaletteKeys registry as-is', () => {
+		const registry = createPaletteKeys({ N: 'reset' })
+		const palette = new Palette({
+			tools: {
+				reset: {
+					label: 'Reset',
+					get can() {
+						return true
+					},
+					run() {},
+				},
+			},
+			keys: registry,
+		})
+		expect(palette.keys).toBe(registry)
 	})
 })

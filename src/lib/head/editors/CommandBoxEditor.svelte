@@ -1,13 +1,11 @@
 <script lang="ts">
 	import {
+		commandBoxPresenter,
 		handlePaletteCommandBoxInputKeydown,
 		handlePaletteCommandChipKeydown,
-		paletteCommandBoxModel,
-		paletteCommandEntries,
 		setPaletteCommandBoxInput
-	} from '$lib/palette/index.svelte'
+	} from '$lib/palette/presenters.svelte'
 	import type { PaletteEditorContext, PaletteSchema, PaletteToolbarItem } from '$lib/palette/types'
-	import { toolbarMeta, tooltip } from './meta'
 
 	type Props = {
 		context: PaletteEditorContext<undefined, PaletteToolbarItem, PaletteSchema>
@@ -15,38 +13,19 @@
 	}
 
 	let { context, onEscapeOrExecute }: Props = $props()
-	const item = $derived(context.item)
-	const meta = $derived(toolbarMeta(item))
-
-	// Self-contained: build entries from the scope palette at init (editors only
-	// receive `context`, so the command box cannot be injected as a prop).
-	// Seeding from `context` once is deliberate; `state_referenced_locally` is suppressed.
+	// Init-time: presenter creates the headless command-box model once.
 	// svelte-ignore state_referenced_locally
-	const scopePalette = context.scope.palette as
-		| {
-				tools: Record<string, never>
-				keys: { findByTool: (spec: string) => readonly string[] }
-		  }
-		| undefined
-	const commandBox = paletteCommandBoxModel({
-		entries: scopePalette ? paletteCommandEntries({ palette: scopePalette as never }) : [],
-		placeholder: 'Command…'
-	})
+	const view = commandBoxPresenter({ context })
+	const commandBox = view.box
+	const expanded = $derived(view.expanded)
 
-	let focused = $state(false)
 	let root: HTMLDivElement | undefined
-	const expanded = $derived(
-		focused ||
-			commandBox.input.value.length > 0 ||
-			commandBox.keywords.tokens.length > 0 ||
-			commandBox.categories.active.length > 0
-	)
 </script>
 
 <div bind:this={root}>
 	<div class={['palette-default-command-box', expanded ? 'is-expanded' : undefined, 'is-floating']}>
-		<div class="palette-default-command-shell" title={tooltip(item, meta.hint)}>
-			<span class="palette-default-icon">{meta.icon ?? '⌘'}</span>
+		<div class="palette-default-command-shell" title={view.title}>
+			<span class="palette-default-icon">{view.icon}</span>
 			<div class="palette-default-command-tokens">
 				{#each commandBox.categories.active as category (category)}
 					<button
@@ -80,11 +59,11 @@
 					value={commandBox.input.value}
 					placeholder={commandBox.input.placeholder}
 					oninput={(event) => setPaletteCommandBoxInput(commandBox, event)}
-					onfocus={() => (focused = true)}
+					onfocus={() => view.setFocused(true)}
 					onblur={(event) => {
 						const next = event.relatedTarget instanceof Node ? event.relatedTarget : undefined
 						if (next && root?.contains(next)) return
-						focused = false
+						view.setFocused(false)
 					}}
 					onkeydown={(event) => {
 						handlePaletteCommandBoxInputKeydown({

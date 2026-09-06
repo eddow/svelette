@@ -1,4 +1,4 @@
-import DrawerEditor from '$lib/palette/components/DrawerEditor.svelte'
+import BaseConfigurator from '$lib/head/editors/BaseConfigurator.svelte'
 import type {
 	PaletteAnyTool,
 	PaletteEditorComponent,
@@ -6,29 +6,16 @@ import type {
 	PaletteSchema,
 	PaletteToolbarItem,
 } from '$lib/palette/types'
-import BaseConfigurator from './BaseConfigurator.svelte'
-import ButtonEditor from './ButtonEditor.svelte'
-import CommandBoxEditor from './CommandBoxEditor.svelte'
-import EnumSubsetConfigurator from './EnumSubsetConfigurator.svelte'
-import FlipEditor from './FlipEditor.svelte'
-import RadioEditor from './RadioEditor.svelte'
-import SegmentedEditor from './SegmentedEditor.svelte'
-import SelectEditor from './SelectEditor.svelte'
 import SliderEditor from './SliderEditor.svelte'
-import SplitButtonEditor from './SplitButtonEditor.svelte'
-import SplitRadioEditor from './SplitRadioEditor.svelte'
 import StarsEditor from './StarsEditor.svelte'
-import StepperEditor from './StepperEditor.svelte'
-import ToggleEditor from './ToggleEditor.svelte'
 
 /**
  * Build a demo editor spec, preserving the editor's tool-family type.
  *
- * Svelte `Component` props are **contravariant**, so the broad configurators
- * (`BaseConfigurator` over `PaletteTool | undefined`, `EnumSubsetConfigurator`
- * over `PaletteToolEnum<string>`) are assignable to any narrower `TTool` — no
- * cast is needed here. The family-specific `TTool` is inferred from `editor`,
- * so `context.tool` stays narrow in each editor component.
+ * Svelte `Component` props are **contravariant**, so the broad configurator
+ * (`BaseConfigurator` over `PaletteTool | undefined`) is assignable to any
+ * narrower `TTool` — no cast is needed. The family-specific `TTool` is inferred
+ * from `editor`, so `context.tool` stays narrow in each editor component.
  */
 function spec<TTool extends PaletteAnyTool | undefined>(
 	editor: PaletteEditorComponent<TTool, PaletteToolbarItem, PaletteSchema>,
@@ -38,28 +25,26 @@ function spec<TTool extends PaletteAnyTool | undefined>(
 	return { editor, configure, ...(footprint ? { flags: { footprint } } : {}) }
 }
 
+/**
+ * The demo layer proves both extension mechanisms (see
+ * `docs/using-the-default-head.md`):
+ *
+ * - **Override (same key)** — `SliderEditor` replaces the head's `number.slider`
+ *   (adds a numeric value badge) because the demo spread comes last.
+ * - **Extend (new key)** — `StarsEditor` is a `number` variant the head lacks:
+ *   a play/rating row of "▶"/"▷" triangles.
+ *
+ * The other families are empty objects so the per-family spread keeps its shape
+ * (a top-level spread would be equivalent here, but the empty entries make
+ * "demo only touches `number`" explicit).
+ */
 export const demoEditors = {
-	boolean: {
-		toggle: spec(ToggleEditor, BaseConfigurator, 'square'),
-	},
-	enum: {
-		flip: spec(FlipEditor, EnumSubsetConfigurator, 'square'),
-		radio: spec(RadioEditor, EnumSubsetConfigurator, 'free'),
-		select: spec(SelectEditor, EnumSubsetConfigurator, 'horizontal'),
-		segmented: spec(SegmentedEditor, EnumSubsetConfigurator, 'free'),
-		splitRadio: spec(SplitRadioEditor, EnumSubsetConfigurator, 'free'),
-	},
+	boolean: {},
+	enum: {},
 	number: {
 		slider: spec(SliderEditor, BaseConfigurator, 'horizontal'),
-		stepper: spec(StepperEditor, BaseConfigurator, 'free'),
 		stars: spec(StarsEditor, BaseConfigurator, 'free'),
 	},
-	item: {
-		commandBox: spec(CommandBoxEditor, BaseConfigurator, 'horizontal'),
-		drawer: spec(DrawerEditor, BaseConfigurator, 'horizontal'),
-	},
-	run: {
-		button: spec(ButtonEditor, BaseConfigurator, 'horizontal'),
-		splitButton: spec(SplitButtonEditor, BaseConfigurator, 'free'),
-	},
+	item: {},
+	run: {},
 }

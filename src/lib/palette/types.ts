@@ -198,11 +198,13 @@ export type PaletteToolbarItemBase = Record<PropertyKey, unknown>
  * String form used by palette items and key bindings to reference tools.
  *
  * - `toolId` resolves the original tool
- * - `toolId|value` builds a setter runner for editable tools
+ * - `toolId=value` builds a setter runner for editable tools
+ *   (`toolId|value` is the legacy spelling, still accepted)
  * - `toolId:action` builds an action runner such as `fontSize:inc`
  */
 export type PaletteToolSpec<TTool extends string = string> =
 	| TTool
+	| `${TTool}=${string}`
 	| `${TTool}|${string}`
 	| `${TTool}:${string}`
 
@@ -557,8 +559,11 @@ export type PaletteEditorRegistry<TSchema extends PaletteSchema = PaletteSchema>
 export interface PaletteConfig<TSchema extends PaletteSchema = PaletteSchema> {
 	/** The available tools. */
 	readonly tools: TSchema['tools']
-	/** The keyboard bindings. */
-	readonly keys: PaletteKeys
+	/**
+	 * Keyboard bindings: either a raw `{ keystroke: toolSpec }` map (normalized
+	 * internally via `createPaletteKeys`) or a prebuilt `PaletteKeys` registry.
+	 */
+	readonly keys: PaletteKeys | PaletteKeyBindings
 	/** Whether the palette is editable. */
 	readonly editable?: boolean
 	/** The editor registry. */
