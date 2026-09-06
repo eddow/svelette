@@ -103,8 +103,8 @@ commandBox in the demo.
 ## 4. Incidental fix
 
 `findSetterSeparator` (`src/lib/palette/palette.svelte.ts`) only treats `=`/`|` before
-any `:` as a setter separator, so `fontSize:inc=fast` resolves as action (`inc`) + arg
-(`fast`) instead of throwing `Unknown palette tool "fontSize:inc"`.
+any `:` as a setter separator, so `gameSpeed:inc=fast` resolves as action (`inc`) + arg
+(`fast`) instead of throwing `Unknown palette tool "gameSpeed:inc"`.
 
 ## 5. Gates
 

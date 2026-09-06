@@ -14,7 +14,7 @@ Builders and model live in `src/lib/palette/command-box.svelte.ts`. Demo editors
 | `paletteCatalogEntries`  | Full catalogue: `mode: 'catalog'` commands + flattened add variants (`add:<variant-id>`), sorted by label. Each carries `catalogDrag` (`{ kind: 'spec' }` or `{ kind: 'variant' }`). |
 | `paletteEnumSubsetValues`| Filter enum values by keywords (powers `EnumSubsetConfigurator` + add-flow keyword filters). |
 
-Labels are humanized (`fontSize` → `Font Size`); keywords collect tool/value/
+Labels are humanized (`gameSpeed` → `Game Speed`); keywords collect tool/value/
 category words; `meta` shows the key binding (`keys.findByTool`) or a fallback.
 `can: false` entries are filtered from `results` (but stay searchable in catalog
 mode). `commandRunner` throws `PaletteError` for non-runnable specs.

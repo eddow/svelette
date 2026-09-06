@@ -23,23 +23,30 @@ Scratch files go in `sandbox/` (git-ignored), never `/tmp`.
 
 ## Demo tour (`src/routes/+page.svelte`)
 
-The demo renders an `Ide` with all four borders plus center content:
+The demo is a **Stellar Outpost** space-colony sim (`src/lib/demo/palette.svelte.ts`)
+rendering an `Ide` with all four borders plus center content:
 
-- **Top**: command box, notifications toggle, layout split-radio, theme select,
-  mode split-radio, font-size slider, tools drawer (toggle + stars), reset split-button
-- **Left**: theme flip, mode split-radio, nested drawer (segmented + stepper)
-- **Right**: font-size slider, speed stars
-- **Bottom**: two tracks — stars/segmented + segmented/slider, then run buttons
-  (`terminal`/`presentation`/`inspectPreset`) and radio editors (`theme`/`mode`)
+- **Top**: command box, icon-only edit-mode toggle, lockdown button, life-support
+  + shields toggles, threat-level segmented
+- **Left**: sim-speed slider, atmosphere select, power-focus segmented, nested
+  drawer (atmosphere select + sim-speed stepper)
+- **Right**: tax-rate slider, solar stepper, satisfaction stars
+- **Bottom**: developer terminal, save, reset, hyper-tick toggle
+
+The work-zone shows every colony variable as pills plus a colony-status panel
+and an `mm:ss` elapsed-since-launch chip. Opening the console dims + disables
+the work-zone (quake-style modal).
 
 Interactions to try:
 
-1. **Edit palette** toggle → hover a toolbar (blue chrome), `pointerdown` on an
-   item opens the inspector (shortcut, move back/forward, remove, configurator).
-2. **Command box**: type `Set Theme to Dark`, run it — the `🎨` pill updates.
-3. **Drawers**: `Tools` (top) opens a vertical popup; `More` (left) nests further.
-4. **Console**: `` ` `` key or `Terminal` button opens the overlay; the checkbutton
-   swaps *Command* ↔ *Toolbar edition* (add-to-toolbar + catalogue + parking).
+1. **Edit toolbars** toggle (top bar, ✏️) → hover a toolbar (blue chrome),
+   `pointerdown` on an item opens the inspector (shortcut, move back/forward,
+   remove, configurator).
+2. **Command box**: type `Set Threat Level to Red`, run it — the `⚠️` pill updates.
+3. **Drawers**: `More` (left) opens a horizontal popup (axis inversion).
+4. **Console**: `` ` `` key or `Terminal` button opens the overlay (toggles — the
+   same shortcut closes it); the checkbutton swaps *Command* ↔ *Toolbar edition*
+   (add-to-toolbar + catalogue + parking).
 5. **Save/Reset layout**: round-trips through `localStorage` (`svelette-demo-layout-v1`).
 
 Theme control: the `theme` tool (`light`/`dark`/`system`) resolves via
@@ -62,7 +69,7 @@ const palette = new Palette({
 			values: [{ value: 'light' }, { value: 'dark' }]
 		}
 	},
-	keys: { D: 'theme=dark' },
+	keys: { E: 'alertLevel=red' },
 	editable: true,
 	editors: headEditors as never,
 	editorDefaults: { enum: 'select' }

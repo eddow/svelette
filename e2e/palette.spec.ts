@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
 	await page.goto('/')
 	await page.evaluate(() => localStorage.clear())
 	await page.reload()
-	await expect(page.getByRole('heading', { name: 'svelette' })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'Stellar Outpost' })).toBeVisible()
 })
 
 test('edit mode toggle switches label and editing chrome', async ({ page }) => {
@@ -23,23 +23,23 @@ test('toolbar command box searches and executes a state command', async ({ page 
 	// wait for the popover before asserting the result.
 	const input = page.getByPlaceholder('Command…').first()
 	await input.click()
-	await input.fill('Set Theme to Dark')
+	await input.fill('Set Threat Level to Red')
 	await expect(page.locator('.palette-default-command-popover').first()).toBeVisible()
 	const result = page
 		.locator('.palette-default-command-result')
-		.filter({ hasText: 'Set Theme to Dark' })
+		.filter({ hasText: 'Set Threat Level to Red' })
 		.first()
 	await expect(result).toBeVisible()
 	await result.click()
-	await expect(page.getByText('🎨 dark')).toBeVisible()
+	await expect(page.getByText('⚠️ red').first()).toBeVisible()
 })
 
 test('drawer opens with axis inversion and closes on Escape', async ({ page }) => {
-	await page.getByRole('button', { name: 'Tools' }).click()
+	await page.getByRole('button', { name: 'More' }).click()
 	const popup = page.locator('.svelette-palette-drawer__popup')
 	await expect(popup).toBeVisible()
-	// Top drawer inverts to a vertical popup.
-	await expect(popup.first()).toHaveClass(/is-vertical/)
+	// Left drawer inverts to a horizontal popup.
+	await expect(popup.first()).toHaveClass(/is-horizontal/)
 	await page.keyboard.press('Escape')
 	await expect(popup).toHaveCount(0)
 })
@@ -75,22 +75,23 @@ test('layout persist + restore round-trips through localStorage', async ({ page 
 test('pointer drag reorders items within a toolbar', async ({ page }) => {
 	await page.getByTestId('edit-toggle').click()
 	await expect(page.locator('.palette-ide.editing').first()).toBeVisible()
-	// Top border, first track, first toolbar: [commandBox, notifications,
-	// layout, theme]. Drag the notifications guard onto the gap after the
-	// theme item and assert the order flipped to [commandBox, layout, theme,
-	// notifications]. Order is scoped to the first toolbar (the border holds
-	// two) and polled — the commit flushes through Svelte reactivity after
+	// Top border, single toolbar: [commandBox, editToolbars, emergencyProtocol,
+	// autoOxygen, shieldGenerator, alertLevel]. Drag the autoOxygen guard onto
+	// the gap after the alertLevel item and assert the order flipped to
+	// [commandBox, editToolbars, emergencyProtocol, shieldGenerator,
+	// alertLevel, autoOxygen]. Order is scoped to the first toolbar (the border
+	// holds one) and polled — the commit flushes through Svelte reactivity after
 	// mouse.up. Gaps are zero-width until proximity chrome expands them, so
 	// the drop point is computed from the neighbouring item rects (right edge
-	// of the theme item) rather than the gap's own bounding box. Playwright
+	// of the alertLevel item) rather than the gap's own bounding box. Playwright
 	// dispatches trusted `pointerdown` with `isPrimary: false`, which the
 	// session ignores — assert via `dispatchEvent` instead. The item session
 	// detaches the dragged item into an ephemeral single-item toolbar on
 	// pointerdown, so the drop target is the gap *inside the source toolbar*
-	// (index 4 in the pre-drag layout, i.e. after theme). NOTE: the detached
-	// item's own gap (index 1) is ignored by hit-testing
+	// (index 6 in the pre-drag layout, i.e. after alertLevel). NOTE: the detached
+	// item's own gap (index 3) is ignored by hit-testing
 	// (`isIgnoredToolbarSpace`), so the move must land on a *different* gap —
-	// here index 4, which the preview resolves to insertion index 3 after the
+	// here index 6, which the preview resolves to insertion index 5 after the
 	// detach shifts indices.
 	const topBorder = page.locator('.toolbar-border[data-region="top"]').first()
 	const firstToolbar = topBorder.locator('.toolbar').first()
@@ -103,25 +104,35 @@ test('pointer drag reorders items within a toolbar', async ({ page }) => {
 						(item as HTMLElement).dataset.tool ?? (item as HTMLElement).dataset.editor ?? '?'
 				)
 			)
-	await expect(topBorder.locator('.toolbar-item-guard')).toHaveCount(8)
-	await expect.poll(order).toEqual(['commandBox', 'notifications', 'layout', 'theme'])
+	await expect(topBorder.locator('.toolbar-item-guard')).toHaveCount(6)
+	await expect
+		.poll(order)
+		.toEqual([
+			'commandBox',
+			'editToolbars',
+			'emergencyProtocol',
+			'autoOxygen',
+			'shieldGenerator',
+			'alertLevel',
+		])
 	// Drive the real `paletteItemDrag` pointer session with synthetic events:
-	// `pointerdown` on the notifications guard (the action's element),
+	// `pointerdown` on the autoOxygen guard (the action's element),
 	// `pointermove` on window past the 4px threshold onto the gap after the
-	// theme item, then `pointerup`. Same pointerId throughout so the session
+	// alertLevel item, then `pointerup`. Same pointerId throughout so the session
 	// accepts the moves. The session element is the source `.toolbar`
 	// (single-item detach only happens for multi-item toolbars — here the
-	// toolbar has 4 items, so the item detaches and the preview re-inserts it
+	// toolbar has 6 items, so the item detaches and the preview re-inserts it
 	// at the hovered gap).
 	const moved = await topBorder
 		.locator('.toolbar-item-guard')
-		.nth(1)
+		.nth(3)
 		.evaluate((guard) => {
 			const toolbar = guard.closest('.toolbar')
 			const spaces = toolbar ? Array.from(toolbar.querySelectorAll('.toolbar-item-space')) : []
-			// Gap after theme in the pre-drag layout (index 4: commandBox |
-			// notifications | layout | theme |).
-			const target = spaces[4] as HTMLElement | undefined
+			// Gap after alertLevel in the pre-drag layout (index 6: commandBox |
+			// editToolbars | emergencyProtocol | autoOxygen | shieldGenerator |
+			// alertLevel |).
+			const target = spaces[6] as HTMLElement | undefined
 			const guardRect = (guard as HTMLElement).getBoundingClientRect()
 			const start = {
 				x: guardRect.left + guardRect.width / 2,
@@ -156,5 +167,14 @@ test('pointer drag reorders items within a toolbar', async ({ page }) => {
 			return 'dispatched'
 		})
 	expect(moved).toBe('dispatched')
-	await expect.poll(order).toEqual(['commandBox', 'layout', 'theme', 'notifications'])
+	await expect
+		.poll(order)
+		.toEqual([
+			'commandBox',
+			'editToolbars',
+			'emergencyProtocol',
+			'shieldGenerator',
+			'alertLevel',
+			'autoOxygen',
+		])
 })

@@ -66,6 +66,19 @@
 		root.style.colorScheme = resolvedTheme
 	})
 
+	// Elapsed time since demo launch (mm:ss) — the custom bottom-bar readout
+	// from the demo plan, rendered as a chip in the work-zone.
+	let elapsed = $state(0)
+	onMount(() => {
+		const started = Date.now()
+		const timer = setInterval(() => {
+			elapsed = Math.floor((Date.now() - started) / 1000)
+		}, 1000)
+		return () => clearInterval(timer)
+	})
+	const elapsedText = $derived(
+		`${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
+	)
 	// Restore a saved layout client-side after mount: SSR always renders the
 	// initial layout (no hydration mismatch), then the stored borders are
 	// spliced into the existing `$state` proxies. `hydratePaletteLayout` can't
@@ -214,7 +227,7 @@
 
 <main>
 	<div class="demo-bar">
-		<h1>svelette palette demo</h1>
+		<h1>Stellar Outpost — palette demo</h1>
 		<button
 			type="button"
 			data-testid="edit-toggle"
@@ -236,43 +249,47 @@
 		{#if consoleUi.open}
 			<ConsoleOverlay {top} />
 		{/if}
-		<div class="demo-center">
+		<div class="demo-center" class:is-dimmed={consoleUi.open} data-testid="work-zone">
 			<div class="demo-hero">
 				<div>
-					<strong>Compact palette playground</strong>
+					<strong>Stellar Outpost</strong>
 					<span
-						>Toolbar-first examples: icons, tooltips, select, button, toggle, and a slider override.</span
+						>Space colony management sim — every colony variable below is bound to a toolbar editor.</span
 					>
 				</div>
-				<div class="demo-chip">{demoState.notifications ? '◉ Enabled' : '○ Muted'}</div>
+				<div class="demo-chip" data-testid="elapsed">⏱ {elapsedText}</div>
 			</div>
 			<div class="demo-strip">
-				<span class="demo-pill"
-					>{demoState.layout === 'horizontal' ? '▤' : '▥'} {demoState.layout}</span
+				<span class="demo-pill">💨 {demoState.autoOxygen ? 'O₂ on' : 'O₂ off'}</span>
+				<span class="demo-pill">🛡️ {demoState.shieldGenerator ? 'Shields up' : 'Shields down'}</span
 				>
-				<span class="demo-pill">{demoState.mode === 'inspect' ? '⌕' : '⌘'} {demoState.mode}</span>
-				<span class="demo-pill">🎨 {demoState.theme}</span>
-				<span class="demo-pill">A {demoState.fontSize}px</span>
-				<span class="demo-pill">★ x{demoState.gameSpeed}</span>
+				<span class="demo-pill">⚡ {demoState.fastMode ? 'Hyper-tick' : 'Normal tick'}</span>
+				<span class="demo-pill">⚠️ {demoState.alertLevel}</span>
+				<span class="demo-pill">🪐 {demoState.colonyTheme}</span>
+				<span class="demo-pill">🔌 {demoState.powerPriority}</span>
+				<span class="demo-pill">⏱️ ×{demoState.gameSpeed}</span>
+				<span class="demo-pill">🪙 {demoState.taxRate}%</span>
+				<span class="demo-pill">☀️ ×{demoState.solarEfficiency}</span>
+				<span class="demo-pill">⭐ {demoState.satisfaction}/5</span>
 			</div>
 			<div class="demo-panel">
-				<div class="demo-panel-title">Live state</div>
+				<div class="demo-panel-title">Colony status</div>
 				<div class="demo-state-grid">
 					<div class="demo-state-row">
 						<span class="demo-state-key">Last action</span>
 						<span class="demo-state-value">{demoState.lastAction}</span>
 					</div>
 					<div class="demo-state-row">
-						<span class="demo-state-key">Theme</span>
-						<span class="demo-state-value">{demoState.theme}</span>
+						<span class="demo-state-key">Threat</span>
+						<span class="demo-state-value">{demoState.alertLevel}</span>
 					</div>
 					<div class="demo-state-row">
-						<span class="demo-state-key">Mode</span>
-						<span class="demo-state-value">{demoState.mode}</span>
+						<span class="demo-state-key">Power</span>
+						<span class="demo-state-value">{demoState.powerPriority}</span>
 					</div>
 					<div class="demo-state-row">
-						<span class="demo-state-key">Layout</span>
-						<span class="demo-state-value">{demoState.layout}</span>
+						<span class="demo-state-key">Atmosphere</span>
+						<span class="demo-state-value">{demoState.colonyTheme}</span>
 					</div>
 				</div>
 			</div>
@@ -377,6 +394,12 @@
 	}
 	:global(.palette-ide-center) {
 		position: relative;
+	}
+	.demo-center.is-dimmed {
+		opacity: 0.45;
+		filter: grayscale(0.4);
+		pointer-events: none;
+		user-select: none;
 	}
 	.demo-hero,
 	.demo-panel {

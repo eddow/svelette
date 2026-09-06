@@ -4,13 +4,15 @@ test.beforeEach(async ({ page }) => {
 	await page.goto('/')
 	await page.evaluate(() => localStorage.clear())
 	await page.reload()
-	await expect(page.getByRole('heading', { name: 'svelette' })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'Stellar Outpost' })).toBeVisible()
 })
 
 async function openConsole(page: import('@playwright/test').Page) {
 	// The bottom track hosts a `terminal` button that opens the console.
 	await page.getByRole('button', { name: /Terminal/ }).click()
 	await expect(page.getByTestId('console-overlay')).toBeVisible()
+	// The modal console dims + disables the working zone.
+	await expect(page.getByTestId('work-zone')).toHaveClass(/is-dimmed/)
 }
 
 test('console opens via backtick and executes a state command', async ({ page }) => {
@@ -20,14 +22,14 @@ test('console opens via backtick and executes a state command', async ({ page })
 	await page.keyboard.press('`')
 	await expect(page.getByTestId('console-overlay')).toBeVisible()
 	const input = page.getByTestId('console-input')
-	await input.fill('Set Theme to Dark')
+	await input.fill('Set Threat Level to Red')
 	const result = page.getByTestId('console-results').locator('.palette-default-command-result', {
-		hasText: 'Set Theme to Dark',
+		hasText: 'Set Threat Level to Red',
 	})
 	await expect(result.first()).toBeVisible()
 	await result.first().click()
 	await expect(page.getByTestId('console-overlay')).toHaveCount(0)
-	await expect(page.getByText('🎨 dark')).toBeVisible()
+	await expect(page.getByText('⚠️ red').first()).toBeVisible()
 })
 
 test('console opens via Terminal button and closes on Escape', async ({ page }) => {
@@ -54,16 +56,16 @@ test('add-to-toolbar flow selects entry + variant', async ({ page }) => {
 	await openConsole(page)
 	await page.getByTestId('console-mode-toggle').check()
 	const addInput = page.getByTestId('console-input')
-	await addInput.fill('Notifications')
+	await addInput.fill('Life Support')
 	await page
 		.getByTestId('console-results')
-		.locator('.palette-default-command-result', { hasText: 'Notifications' })
+		.locator('.palette-default-command-result', { hasText: 'Life Support' })
 		.first()
 		.click()
 	const panel = page.getByTestId('console-add-panel')
-	await expect(panel).toContainText('Notifications')
+	await expect(panel).toContainText('Life Support')
 	await panel
-		.locator('.palette-default-add-variant-trigger', { hasText: 'Notifications (editor)' })
+		.locator('.palette-default-add-variant-trigger', { hasText: 'Life Support (editor)' })
 		.click()
 	await expect(panel.locator('select').first()).toBeVisible()
 })

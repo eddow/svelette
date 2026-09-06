@@ -6,14 +6,15 @@ Four families (`src/lib/palette/types.ts`):
 
 | Family    | Shape                                              | Examples                          |
 | --------- | -------------------------------------------------- | --------------------------------- |
-| `run`     | `{ run(), can }`                                   | `terminal`, `reset`, presets      |
-| `boolean` | `{ type: 'boolean', value, default }`              | `notifications`                   |
-| `enum`    | `{ type: 'enum', value, default, values[] }`       | `theme`, `layout`, `mode`         |
-| `number`  | `{ type: 'number', value, default, min?, max?, step? }` | `fontSize`, `gameSpeed`      |
+| `run`     | `{ run(), can }`                                   | `terminal`, `saveGame`, `emergencyProtocol` |
+| `boolean` | `{ type: 'boolean', value, default }`              | `autoOxygen`, `editToolbars`      |
+| `enum`    | `{ type: 'enum', value, default, values[] }`       | `alertLevel`, `colonyTheme`, `powerPriority` |
+| `number`  | `{ type: 'number', value, default, min?, max?, step? }` | `gameSpeed`, `taxRate`, `satisfaction` |
 
 Tools carry `label`, `icon` (`PaletteIcon = string | Component`), `categories`,
 `keywords`. Editable tools expose get/set `value` — in the demo these proxy a
-module-level `$state` object (`demoState`), so every editor mutation is reactive.
+module-level `$state` object (`demoState`, the Stellar Outpost colony state), so
+every editor mutation is reactive.
 `Snippet` is excluded from `PaletteIcon`: `Component` and `Snippet` are both
 callables with no runtime discriminator, so the `Icon` helper could never tell
 them apart — wrap inline markup in a component instead.
@@ -26,24 +27,25 @@ Helpers: `isRunTool` / `isEditableTool` guards, `paletteToolFamily(tool)`,
 
 `palette.tool(spec)` resolves three forms:
 
-- `toolId` → the tool itself (`notifications`)
-- `toolId=value` → setter runner (`theme=dark`, `layout=vertical`); running the
+- `toolId` → the tool itself (`autoOxygen`)
+- `toolId=value` → setter runner (`alertLevel=red`, `colonyTheme=mars`); running the
   same setter twice restores the previous value (or `default`). Legacy `toolId|value`
   still resolves.
-- `toolId:action` → action runner (`fontSize:inc`, `fontSize:dec`); only `number`
+- `toolId:action` → action runner (`gameSpeed:inc`, `gameSpeed:dec`); only `number`
   has built-in actions (`valueActions.number`)
 
 Unknown tools, non-editable setters, and unknown actions throw `PaletteError`
 (the palette error taxonomy — `commandRunner` deliberately throws `PaletteError`,
 not plain `Error`).
 
-Key bindings (`src/lib/palette/keys.ts`): pass a raw map (`keys: { D: 'theme=dark' }`)
+Key bindings (`src/lib/palette/keys.ts`): pass a raw map (`keys: { E: 'emergencyProtocol' }`)
 — `Palette` normalizes it internally via `createPaletteKeys` (also accepts a
 prebuilt registry). Keystrokes normalize (`Ctrl`/`Alt`/`Shift`/`Meta` order, `cmd`→`Meta`,
 `escape`→`Esc`, single chars uppercased). `paletteRoot` resolves `keydown` on the
 IDE root (skips editable targets) and runs the tool: run tools execute when
 `can`, boolean tools toggle. Demo bindings live in `src/lib/demo/palette.svelte.ts`
-(`` ` `` terminal, `N` notifications, `T/D/S` theme, `+/-` font size, …).
+(`` ` `` terminal toggle, `N` life support, `S` shields, `E` lockdown,
+`Ctrl+S` save, `+`/`-` sim speed, `1/2/3` threat presets).
 
 ## Palette class (`src/lib/palette/palette.svelte.ts`)
 
@@ -66,10 +68,11 @@ provides one variant per family (`boolean/toggle`, `enum/select`, `number/slider
 stays the fallback:
 
 - `boolean`: `toggle` (head) — demo adds nothing
-- `enum`: `select` (head) + `flip`, `radio`, `segmented`, `splitRadio` (demo)
-- `number`: `slider` (head) + `stepper`, `stars` (demo)
-- `run`: `button` (head) + `splitButton` (demo)
-- `item` (editor-only, no tool): `commandBox`, `drawer` (head; demo overrides with its own `commandBox` + core `DrawerEditor`)
+- `enum`: `select` + `segmented` (head) — demo adds nothing
+- `number`: `slider` + `stepper` (head) + demo `slider` override (value badge) and
+  `stars` extension (play/rating row)
+- `run`: `button` (head) — demo adds nothing
+- `item` (editor-only, no tool): `commandBox`, `drawer` (head; demo adds nothing)
 
 Head components are dumb: each binds a headless core presenter
 (`src/lib/palette/presenters.svelte.ts` — `button/toggle/select/slider/commandBox/

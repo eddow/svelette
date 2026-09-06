@@ -44,17 +44,17 @@ import { Palette } from '$lib/palette/index.svelte'
 
 export const palette = new Palette({
 	tools: {
-		notifications: { type: 'boolean', label: 'Notifications', value: true, default: true },
-		theme: {
-			type: 'enum', label: 'Theme', value: 'dark', default: 'dark',
-			values: [{ value: 'light' }, { value: 'dark' }]
+		autoOxygen: { type: 'boolean', label: 'Life Support', value: true, default: true },
+		alertLevel: {
+			type: 'enum', label: 'Threat', value: 'green', default: 'green',
+			values: [{ value: 'green' }, { value: 'red' }]
 		},
-		fontSize: {
-			type: 'number', label: 'Font Size', value: 14, default: 14, min: 10, max: 20, step: 1
+		gameSpeed: {
+			type: 'number', label: 'Sim Speed', value: 1, default: 1, min: 0.5, max: 5, step: 0.5
 		},
-		reset: { label: 'Reset', get can() { return true }, run() {} }
+		emergencyProtocol: { label: 'Lockdown', get can() { return true }, run() {} }
 	},
-	keys: { N: 'notifications', D: 'theme=dark', '+': 'fontSize:inc', R: 'reset' },
+	keys: { N: 'autoOxygen', '1': 'alertLevel=green', '+': 'gameSpeed:inc', E: 'emergencyProtocol' },
 	editable: true,
 	editors: headEditors as never,
 	editorDefaults: { run: 'button' }
@@ -74,10 +74,10 @@ export const palette = new Palette({
 		{
 			space: 0.5,
 			toolbar: [
-				{ tool: 'notifications', editor: 'toggle' },
-				{ tool: 'theme', editor: 'select' },
-				{ tool: 'fontSize', editor: 'slider' },
-				{ tool: 'reset', editor: 'button' }
+				{ tool: 'autoOxygen', editor: 'toggle' },
+				{ tool: 'alertLevel', editor: 'select' },
+				{ tool: 'gameSpeed', editor: 'slider' },
+				{ tool: 'emergencyProtocol', editor: 'button' }
 			]
 		}
 	])
@@ -90,9 +90,9 @@ export const palette = new Palette({
 
 Notes:
 
-- `keys` accepts a raw map (`{ D: 'theme=dark' }`) — `Palette` normalizes it via
+- `keys` accepts a raw map (`{ E: 'emergencyProtocol' }`) — `Palette` normalizes it via
   `createPaletteKeys`. Setter specs use `toolId=value` (`|` is legacy); actions use
-  `toolId:action` (`fontSize:inc`).
+  `toolId:action` (`gameSpeed:inc`).
 - `editorDefaults: { run: 'button' }` lets run items omit `editor`.
 - Import **both** stylesheets once: `palette.css` (core layout + edit chrome) and
   `head-default.css` (head theme). Never inject CSS at runtime.

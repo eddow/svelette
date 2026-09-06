@@ -39,7 +39,7 @@ const palette = new Palette({
 			values: [{ value: 'light' }, { value: 'dark' }]
 		}
 	},
-	keys: { D: 'theme=dark' },
+	keys: { E: 'alertLevel=red' },
 	editable: true,
 	editors: headEditors,
 	editorDefaults: { enum: 'select' }
@@ -60,7 +60,7 @@ const palette = new Palette({
 ```
 
 Tool specs: `toolId` (resolve), `toolId=value` (setter runner, legacy `toolId|value`), `toolId:action`
-(action runner, e.g. `fontSize:inc`).
+(action runner, e.g. `gameSpeed:inc`).
 
 ## Layout model
 

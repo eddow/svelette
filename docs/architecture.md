@@ -149,7 +149,8 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   restore entry is GC-hygienic on its own. Verified divergence: with two setters on one tool
   (`fontSize|11`, `fontSize|12`), the second `run()` overwrites the first's stored restore
   value without sursaut's effect cleanup, so re-running the second setter restores the stale
-  value instead of `default`. Single-setter behaviour is identical.
+  value instead of `default`. Single-setter behaviour is identical. (The `fontSize`
+  example is the historical unit-test fixture name; the demo now uses colony tools.)
 - `renderEditor` / `renderConfigurator` **return** the editor/configurator component (the adapter
   renders it with a `context` prop built by `resolveEditorContext`) instead of invoking a JSX
   factory. `Palette.Toolbar` / `Palette.Ide` factories are omitted here — layout components land
@@ -236,10 +237,11 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 
 ## 16. Demo editors & configurators (Phase 6 — implemented)
 
-- `src/lib/demo/editors/` holds plain Svelte editor components (no model layer, no variant
-  factory): `Button` / `SplitButton` (run), `Toggle` (boolean), `Flip` / `Radio` / `Select` /
-  `Segmented` / `SplitRadio` (enum), `Slider` / `Stepper` / `Stars` (number), `CommandBox`
-  (item). Each takes `context: PaletteEditorContext` and mutates the `$state` tool directly.
+- `src/lib/demo/editors/` holds two plain Svelte editor components (no model layer,
+  no variant factory): `SliderEditor` (same-key `number.slider` override adding a
+  value badge) and `StarsEditor` (`number.stars` extension, a play/rating row of
+  "▶"/"▷" triangles). Each takes `context: PaletteEditorContext` and mutates the
+  `$state` tool via `sliderPresenter` (`view.set`).
 - Shared helpers live in `editors/meta.ts` (`toolbarMeta` / `tooltip` / `layoutFromSurface` /
   `regionFromScope` / `menuChevron` / enum-subset filtering + display). Helpers accept the
   generic `PaletteToolbarItem<string, string, unknown>` (`AnyItem`) so demo components stay
@@ -250,15 +252,16 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   its own `paletteCommandBoxModel` from `context.scope.palette` at init (editors receive only
   `context`, so the box cannot be injected as a prop; seeding is deliberate and
   `state_referenced_locally` is suppressed).
-- Configurators (`BaseConfigurator` label/icon/hint/editor/tone + `EnumSubsetConfigurator`
-  choice-display/allowed-values/keyword-filter) read `context.scope.editorChoices` injected by
-  `resolveConfiguratorScope`; `registry.ts` wires `spec(editor, configure, footprint)` per
-  family → variant, mirroring the reference `demoEditors` registry.
-- Demo palette (`src/lib/demo/palette.svelte.ts`): `$state` demo state + `Palette` with key
-  bindings, `editorDefaults: { run: 'button' }`, and `initialIdeConfig: PaletteBorders`
-  covering every tool family in every region (top command/toggle/splitRadio/select +
-  mode/slider/splitButton; left flip/splitRadio; right slider/stars; bottom stars/segmented +
-  segmented/slider). `src/routes/+page.svelte` renders `Ide` with `$state` borders, an
+- Configurators (`BaseConfigurator` label/icon/hint/editor/tone) read
+  `context.scope.editorChoices` injected by `resolveConfiguratorScope`;
+  `registry.ts` wires `spec(editor, configure, footprint)` per family → variant,
+  mirroring the reference `demoEditors` registry.
+- Demo palette (`src/lib/demo/palette.svelte.ts`): `$state` colony state + `Palette`
+  with key bindings, `editorDefaults` for all families, and
+  `initialIdeConfig: PaletteBorders` covering every tool family in every region
+  (top command/edit-toggle/lockdown/toggles/threat; left sim-speed/atmosphere/
+  power + nested drawer; right tax/solar/stars; bottom terminal/save/reset/
+  hyper-tick). `src/routes/+page.svelte` renders `Ide` with `$state` borders, an
   edit-mode toggle, and an inspector binding `renderConfigurator` +
   `resolveConfiguratorContext` output to `<Configurator context>`.
 - Defensive failure mode confirmed: `Toolbar.svelte` try/catch renders nothing on unknown
@@ -304,23 +307,35 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   so `drawer` / `commandBox` items resolve through the `item` registry (tool-backed items
   still render nothing on unknown tools — desired). `Palette` interface gains the missing
   `resolveConfiguratorContext` (already on the class; `DrawerPopup`'s `Toolbar` needs it
-  for the `<PaletteItem>` bind). Demo registry wires `item.drawer`; demo layout adds a top
-  drawer (toggle + stars) and a left drawer with a nested toolbar (segmented + stepper).
+  for the `<PaletteItem>` bind). Demo registry wires `item.drawer`; demo layout adds a
+  left nested drawer (atmosphere select + sim-speed stepper).
 - Tests: `tests/palette/drawer.test.ts` (6) — factory shape, open-on-click + Escape close,
   collapse-signal close, axis inversion both ways, popup scope publishing, hover travel
   stays open. Gates: `check` 0/0, `lint` clean, `test` 101 pass, `build` ok.
 
-## 18. Demo page (Phase 9 — complete)
+## 18. Demo page (Stellar Outpost — current)
 
-- `src/routes/+page.svelte` exercises all four regions (top command/toggle/splitRadio/select
-  + mode/slider/drawer/splitButton; left flip/splitRadio/nested drawer; right slider/stars;
-  bottom stars/segmented + segmented/slider + a second track with `button` run editors
-  (`terminal`/`presentation`/`inspectPreset`) and `radio` enum editors (`theme`/`mode`)), the
-  edit-mode toggle (`palettes.editing`), the toolbar command box, drawer popups with axis
-  inversion, and the item inspector (`renderConfigurator` + `resolveConfiguratorContext` →
-  `<Configurator context>`).
-- Center content shows a live-state panel (hero + pills + state grid bound to `$state`
-  `demoState`) so every tool mutation is visible without opening devtools.
+- `src/lib/demo/palette.svelte.ts` is a **Stellar Outpost** space-colony sim:
+  `$state` colony state (`autoOxygen`, `shieldGenerator`, `fastMode`,
+  `colonyTheme`, `alertLevel`, `powerPriority`, `gameSpeed`, `taxRate`,
+  `solarEfficiency`, `satisfaction`) + system `theme` + `lastAction`, with run
+  tools `emergencyProtocol` (disabled at green), `saveGame` (localStorage),
+  `resetSimulation` (dirty-gated), `terminal` (quake-style toggle), and an
+  `editToolbars` boolean bound to `palettes.editing` (icon-only top-bar toggle).
+  Keys: `` ` `` terminal, `N`/`S`/`E` toggles + lockdown, `Ctrl+S` save,
+  `+`/`-` sim speed, `1/2/3` threat presets.
+- `initialIdeConfig` avoids duplicate tool/editor pairs across borders: top
+  (command box, edit toggle, lockdown, life-support, shields, threat
+  segmented), left (sim-speed slider, atmosphere select, power segmented +
+  nested drawer), right (tax slider, solar stepper, satisfaction stars),
+  bottom (terminal, save, reset, hyper-tick). `editorDefaults` covers all
+  families (`run`/`boolean`/`enum`/`number`).
+- `src/routes/+page.svelte` renders `Ide` with `$state` borders, save/reset
+  layout buttons, and the item inspector (`renderConfigurator` +
+  `resolveConfiguratorContext` → `<Configurator context>`). The work-zone
+  shows every colony variable as pills + a colony-status panel + an `mm:ss`
+  elapsed-since-launch chip; the open console dims + disables it
+  (`.demo-center.is-dimmed`, quake-style modal).
 - Console overlay (`src/lib/demo/console.svelte.ts` + `src/lib/demo/ConsoleOverlay.svelte`,
   opened by the `terminal` run tool): popup command-box overlay reusing the
   `.palette-default-command-*` styles. Command mode runs `paletteCommandEntries` (state tools
@@ -354,20 +369,22 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 ## 19. E2E coverage (Phase 10 — complete)
 
 - `e2e/palette.spec.ts` (6): edit-mode toggle label + `.palette-ide.editing` chrome,
-  toolbar command-box search/execute ("Set Theme to Dark" → `🎨 dark` pill), drawer open
-  with axis inversion (top drawer → `is-vertical` popup) + Escape close, inspector via
-  `pointerdown` on the edit-mode `.toolbar-item-guard` (shortcut display, move-back
-  disabled / move-forward enabled, forward → "Item moved forward"), layout save → reload
-  → "restored" badge → reset, pointer drag reorder (synthetic `PointerEvent`
-  `pointerdown` on the notifications guard + `pointermove`/`pointerup` on `window` with
-  a shared `pointerId`, drop on the gap after theme → order flips to
-  `[commandBox, layout, theme, notifications]`).
+  toolbar command-box search/execute ("Set Threat Level to Red" → `⚠️ red` pill),
+  drawer open with axis inversion (left drawer → `is-horizontal` popup) + Escape
+  close, inspector via `pointerdown` on the edit-mode `.toolbar-item-guard`
+  (shortcut display, move-back disabled / move-forward enabled, forward →
+  "Item moved forward"), layout save → reload → "restored" badge → reset,
+  pointer drag reorder (synthetic `PointerEvent` `pointerdown` on the autoOxygen
+  guard + `pointermove`/`pointerup` on `window` with a shared `pointerId`, drop
+  on the gap after alertLevel → order flips to `[commandBox, editToolbars,
+  emergencyProtocol, shieldGenerator, alertLevel, autoOxygen]`).
 - `e2e/console.spec.ts` (6): backtick opens the console (Ide root focused first —
   `paletteRoot` listens on the root `keydown`, so a bare body-level press never reaches
-  it) + command execute closes the overlay, Terminal button open + Escape close,
-  checkbutton swaps `Command…` ↔ `Add to toolbar…` placeholders with catalogue + add
-  panel, add flow (Notifications entry → variant card → value select), catalogue rows
-  carry `draggable="true"`, catalogue drop (synthetic `dragstart`/`dragover`/`drop`
+  it) + command execute closes the overlay, Terminal button open + Escape close
+  (+ work-zone `is-dimmed` while open), checkbutton swaps `Command…` ↔
+  `Add to toolbar…` placeholders with catalogue + add panel, add flow (Life
+  Support entry → variant card → value select), catalogue rows carry
+  `draggable="true"`, catalogue drop (synthetic `dragstart`/`dragover`/`drop`
   with a `dataTransfer` stub → session path inserts the row's item into the first
   toolbar gap, count + 1).
 - E2E lessons: `paletteItemDrag` inspects on `pointerdown`, so tests dispatch

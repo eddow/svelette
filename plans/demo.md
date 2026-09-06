@@ -2,6 +2,10 @@ Take care that the instructions have to be double-checked as the specifications 
 Also, we can let other "system" ones, like theme
 All the variables will just be displayed in the "work-zone" as icons/texts
 The idea is: let's have it quite realistic (avoid twice the same command/enum in the toolbars, ...)
+
+Implemented: `src/lib/demo/palette.svelte.ts` (Stellar Outpost tools + keys +
+`initialIdeConfig`), `src/routes/+page.svelte` (work-zone pills + status panel +
+`mm:ss` elapsed chip, `is-dimmed` while the console is open).
 **Stellar Outpost (Space Colony Management Sim)**
 
 This theme provides a rich mix of states, continuous sliders, discrete modes, and instant actions to thoroughly stress-test every editor variant (`toggle`, `select`, `slider`, `stepper`, `stars`, `button`, `splitButton`, `commandBox`, and `drawer`).
@@ -166,7 +170,9 @@ export const demoKeys = {
 * **Top Bar:** Houses instant actions and high-priority states (`emergencyProtocol`, `autoOxygen`, `shieldGenerator`, `alertLevel`).
 * **Left Border:** Manages simulation pacing and environmental settings (`gameSpeed`, `colonyTheme`, `powerPriority`).
 * **Right Border:** Controls economic and hardware performance parameters (`taxRate`, `solarEfficiency`).
-* **Bottom Bar:** Dedicated developer utilities, save triggers, and secondary command triggers (`terminal`, `saveGame`, `resetSimulation`, `fastMode`) + a custom "time since demo launched as mm:ss"
+* **Bottom Bar:** 
+  - Dedicated developer utilities, save triggers, and secondary command triggers (`terminal`, `saveGame`, `resetSimulation`, `fastMode`) 
+  - A custom "time since demo launched as mm:ss"
 
 Would you like to explore how to wire custom editor variants like a star-rating picker for colony satisfaction or a split-button for power grid toggles into this specific theme?
 

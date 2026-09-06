@@ -1,109 +1,152 @@
 import { headEditors } from '$lib/head/registry'
-import { Palette } from '$lib/palette/palette.svelte'
+import { Palette, palettes } from '$lib/palette/palette.svelte'
 import type { PaletteBorders } from '$lib/palette/types'
-import { openConsole } from './console.svelte'
+import { closeConsole, consoleUi, openConsole } from './console.svelte'
 import { demoEditors } from './editors/registry'
 
 export type DemoState = {
-	notifications: boolean
-	layout: 'horizontal' | 'vertical'
-	mode: 'inspect' | 'command'
+	autoOxygen: boolean
+	shieldGenerator: boolean
+	fastMode: boolean
+	colonyTheme: 'mars' | 'neptune' | 'void' | 'matrix'
+	alertLevel: 'green' | 'yellow' | 'red' | 'black'
+	powerPriority: 'research' | 'defense' | 'economy' | 'balanced'
 	theme: 'light' | 'dark' | 'system'
-	fontSize: number
 	gameSpeed: number
+	taxRate: number
+	solarEfficiency: number
+	satisfaction: number
 	lastAction: string
 }
 
+/** Colony defaults (theme is a system setting and survives resets). */
+const colonyDefaults = {
+	autoOxygen: true,
+	shieldGenerator: false,
+	fastMode: false,
+	colonyTheme: 'mars',
+	alertLevel: 'green',
+	powerPriority: 'balanced',
+	gameSpeed: 1,
+	taxRate: 15,
+	solarEfficiency: 1.2,
+	satisfaction: 3,
+} as const
+
 export const demoState = $state<DemoState>({
-	notifications: true,
-	layout: 'horizontal',
-	mode: 'command',
+	...colonyDefaults,
 	theme: 'system',
-	fontSize: 14,
-	gameSpeed: 3,
 	lastAction: 'Ready',
 })
 
-export function resetDefaults() {
-	demoState.notifications = true
-	demoState.layout = 'horizontal'
-	demoState.mode = 'command'
-	demoState.theme = 'system'
-	demoState.fontSize = 14
-	demoState.gameSpeed = 3
-	demoState.lastAction = 'Reset to defaults'
+export function resetColony() {
+	Object.assign(demoState, colonyDefaults)
+	demoState.lastAction = 'Colony reset to defaults'
 }
 
-export function applyPresentationMode() {
-	demoState.notifications = false
-	demoState.layout = 'horizontal'
-	demoState.mode = 'command'
-	demoState.theme = 'dark'
-	demoState.fontSize = 16
-	demoState.gameSpeed = 2
-	demoState.lastAction = 'Applied presentation preset'
+function isColonyDirty(): boolean {
+	return (
+		demoState.autoOxygen !== colonyDefaults.autoOxygen ||
+		demoState.shieldGenerator !== colonyDefaults.shieldGenerator ||
+		demoState.fastMode !== colonyDefaults.fastMode ||
+		demoState.colonyTheme !== colonyDefaults.colonyTheme ||
+		demoState.alertLevel !== colonyDefaults.alertLevel ||
+		demoState.powerPriority !== colonyDefaults.powerPriority ||
+		demoState.gameSpeed !== colonyDefaults.gameSpeed ||
+		demoState.taxRate !== colonyDefaults.taxRate ||
+		demoState.solarEfficiency !== colonyDefaults.solarEfficiency ||
+		demoState.satisfaction !== colonyDefaults.satisfaction
+	)
 }
 
-export function applyInspectorMode() {
-	demoState.notifications = true
-	demoState.layout = 'vertical'
-	demoState.mode = 'inspect'
-	demoState.theme = 'system'
-	demoState.fontSize = 13
-	demoState.gameSpeed = 4
-	demoState.lastAction = 'Applied inspector preset'
-}
-
-export const demoPalette = new Palette({
+export const demoPalette: Palette = new Palette({
 	tools: {
-		notifications: {
+		editToolbars: {
 			type: 'boolean',
-			label: 'Notifications',
-			icon: '🔔',
-			categories: ['settings'],
-			keywords: ['alerts', 'sound', 'mute'],
+			label: 'Edit toolbars',
+			icon: '✏️',
+			categories: ['system'],
+			keywords: ['edit', 'toolbars', 'customize', 'layout'],
+			get value(): boolean {
+				return palettes.editing === demoPalette
+			},
+			set value(value: boolean) {
+				palettes.editing = value ? demoPalette : undefined
+			},
+			default: false,
+		},
+		autoOxygen: {
+			type: 'boolean',
+			label: 'Automated Life Support',
+			icon: '💨',
+			categories: ['systems', 'automation'],
+			keywords: ['oxygen', 'air', 'breathing', 'recycling', 'auto'],
 			get value() {
-				return demoState.notifications
+				return demoState.autoOxygen
 			},
 			set value(value) {
-				demoState.notifications = value
+				demoState.autoOxygen = value
 			},
 			default: true,
 		},
-		layout: {
+		colonyTheme: {
 			type: 'enum',
-			label: 'Layout',
-			icon: '▤',
-			categories: ['layout'],
-			keywords: ['arrangement'],
+			label: 'Outpost Atmosphere',
+			icon: '🪐',
+			categories: ['appearance'],
+			keywords: ['theme', 'style', 'mars', 'void', 'skin', 'color'],
 			get value() {
-				return demoState.layout
+				return demoState.colonyTheme
 			},
 			set value(value) {
-				demoState.layout = value
+				demoState.colonyTheme = value
 			},
-			default: 'horizontal',
+			default: 'mars',
 			values: [
-				{ value: 'horizontal', icon: '▤', label: 'Horizontal', keywords: ['row'] },
-				{ value: 'vertical', icon: '▥', label: 'Vertical', keywords: ['column'] },
+				{ value: 'mars', icon: '🔴', label: 'Mars', keywords: ['red', 'dust'] },
+				{ value: 'neptune', icon: '🔵', label: 'Neptune', keywords: ['blue', 'ice'] },
+				{ value: 'void', icon: '⚫', label: 'Void', keywords: ['dark', 'deep'] },
+				{ value: 'matrix', icon: '🟢', label: 'Matrix', keywords: ['green', 'grid'] },
 			],
 		},
-		mode: {
+		powerPriority: {
 			type: 'enum',
-			label: 'Mode',
-			icon: '⌘',
-			categories: ['mode'],
-			keywords: ['focus'],
+			label: 'Power Grid Focus',
+			icon: '🔌',
+			categories: ['economy', 'power'],
+			keywords: ['power', 'energy', 'grid', 'priority', 'research', 'defense', 'economy'],
 			get value() {
-				return demoState.mode
+				return demoState.powerPriority
 			},
 			set value(value) {
-				demoState.mode = value
+				demoState.powerPriority = value
 			},
-			default: 'command',
+			default: 'balanced',
 			values: [
-				{ value: 'inspect', icon: '⌕', label: 'Inspect', keywords: ['debug'] },
-				{ value: 'command', icon: '⌘', label: 'Command', keywords: ['keyboard'] },
+				{ value: 'research', icon: '🔬', label: 'Research', keywords: ['science', 'lab'] },
+				{ value: 'defense', icon: '🎯', label: 'Defense', keywords: ['turret', 'guard'] },
+				{ value: 'economy', icon: '💰', label: 'Economy', keywords: ['trade', 'credits'] },
+				{ value: 'balanced', icon: '⚖️', label: 'Balanced', keywords: ['even', 'auto'] },
+			],
+		},
+		alertLevel: {
+			type: 'enum',
+			label: 'Threat Level',
+			icon: '⚠️',
+			categories: ['security'],
+			keywords: ['alert', 'threat', 'status', 'defcon', 'green', 'yellow', 'red', 'black'],
+			get value() {
+				return demoState.alertLevel
+			},
+			set value(value) {
+				demoState.alertLevel = value
+			},
+			default: 'green',
+			values: [
+				{ value: 'green', icon: '🟢', label: 'Green', keywords: ['safe', 'calm'] },
+				{ value: 'yellow', icon: '🟡', label: 'Yellow', keywords: ['caution', 'watch'] },
+				{ value: 'red', icon: '🔴', label: 'Red', keywords: ['danger', 'attack'] },
+				{ value: 'black', icon: '⬛', label: 'Black', keywords: ['critical', 'doom'] },
 			],
 		},
 		theme: {
@@ -125,112 +168,174 @@ export const demoPalette = new Palette({
 				{ value: 'system', icon: '💻', label: 'System' },
 			],
 		},
-		fontSize: {
+		taxRate: {
 			type: 'number',
-			label: 'Font Size',
-			icon: 'A',
-			categories: ['appearance'],
-			keywords: ['font', 'text', 'type'],
+			label: 'Colony Tax Rate',
+			icon: '🪙',
+			categories: ['economy'],
+			keywords: ['tax', 'credits', 'economy', 'money', 'revenue'],
 			get value() {
-				return demoState.fontSize
+				return demoState.taxRate
 			},
 			set value(value) {
-				demoState.fontSize = value
+				demoState.taxRate = value
 			},
-			default: 14,
-			min: 10,
-			max: 20,
-			step: 1,
+			default: 15,
+			min: 0,
+			max: 50,
+			step: 5,
 		},
 		gameSpeed: {
 			type: 'number',
-			label: 'Playback Speed',
-			icon: '▶',
-			categories: ['playback'],
-			keywords: ['speed', 'game', 'animation'],
+			label: 'Simulation Speed',
+			icon: '⏱️',
+			categories: ['simulation'],
+			keywords: ['speed', 'time', 'rate', 'clock', 'multiplier'],
 			get value() {
 				return demoState.gameSpeed
 			},
 			set value(value) {
 				demoState.gameSpeed = value
 			},
+			default: 1,
+			min: 0.5,
+			max: 5,
+			step: 0.5,
+		},
+		solarEfficiency: {
+			type: 'number',
+			label: 'Solar Array Multiplier',
+			icon: '☀️',
+			categories: ['power'],
+			keywords: ['solar', 'energy', 'efficiency', 'multiplier', 'panels'],
+			get value() {
+				return demoState.solarEfficiency
+			},
+			set value(value) {
+				demoState.solarEfficiency = value
+			},
+			default: 1.2,
+			min: 0.8,
+			max: 3,
+			step: 0.1,
+		},
+		satisfaction: {
+			type: 'number',
+			label: 'Colony Satisfaction',
+			icon: '⭐',
+			categories: ['colony'],
+			keywords: ['satisfaction', 'morale', 'happiness', 'rating'],
+			get value() {
+				return demoState.satisfaction
+			},
+			set value(value) {
+				demoState.satisfaction = value
+			},
 			default: 3,
 			min: 1,
 			max: 5,
 			step: 1,
 		},
+		shieldGenerator: {
+			type: 'boolean',
+			label: 'Deflector Shields',
+			icon: '🛡️',
+			categories: ['defense'],
+			keywords: ['shields', 'defense', 'protection', 'barrier'],
+			get value() {
+				return demoState.shieldGenerator
+			},
+			set value(value) {
+				demoState.shieldGenerator = value
+			},
+			default: false,
+		},
+		fastMode: {
+			type: 'boolean',
+			label: 'Hyper-Tick Mode',
+			icon: '⚡',
+			categories: ['simulation'],
+			keywords: ['fast', 'speed', 'turbo', 'tick'],
+			get value() {
+				return demoState.fastMode
+			},
+			set value(value) {
+				demoState.fastMode = value
+			},
+			default: false,
+		},
+		emergencyProtocol: {
+			label: 'Emergency Lockdown',
+			icon: '🚨',
+			categories: ['system', 'action'],
+			keywords: ['lockdown', 'evacuate', 'alert', 'crisis'],
+			get can() {
+				return demoState.alertLevel !== 'green'
+			},
+			run() {
+				demoState.lastAction = 'Colony lockdown initiated! All personnel to shelters.'
+			},
+		},
+		saveGame: {
+			label: 'Save Colony State',
+			icon: '💾',
+			categories: ['system'],
+			keywords: ['save', 'serialize', 'export', 'backup'],
+			get can() {
+				return true
+			},
+			run() {
+				try {
+					localStorage.setItem('stellar-outpost-save', JSON.stringify({ ...demoState }))
+					demoState.lastAction = 'Colony saved'
+				} catch {
+					demoState.lastAction = 'Colony save failed'
+				}
+			},
+		},
+		resetSimulation: {
+			label: 'Reset Colony',
+			icon: '🔄',
+			categories: ['system'],
+			keywords: ['reset', 'wipe', 'restart', 'default'],
+			get can() {
+				return isColonyDirty()
+			},
+			run() {
+				resetColony()
+			},
+		},
 		terminal: {
-			label: 'Terminal',
-			icon: '`',
-			categories: ['run'],
-			keywords: ['terminal', 'magic', 'popup'],
+			label: 'Developer Terminal',
+			icon: '💻',
+			categories: ['system', 'debug'],
+			keywords: ['console', 'cli', 'debug', 'shell'],
 			get can() {
 				return true
 			},
 			run() {
-				demoState.lastAction = 'Terminal opened'
-				openConsole()
-			},
-		},
-		reset: {
-			label: 'Reset Defaults',
-			icon: '↺',
-			categories: ['presets'],
-			keywords: ['restore', 'defaults'],
-			get can() {
-				return (
-					demoState.notifications !== true ||
-					demoState.layout !== 'horizontal' ||
-					demoState.mode !== 'command' ||
-					demoState.theme !== 'system' ||
-					demoState.fontSize !== 14 ||
-					demoState.gameSpeed !== 3
-				)
-			},
-			run() {
-				resetDefaults()
-			},
-		},
-		presentation: {
-			label: 'Apply Presentation Preset',
-			icon: '🎬',
-			categories: ['presets'],
-			keywords: ['presentation', 'present'],
-			get can() {
-				return true
-			},
-			run() {
-				applyPresentationMode()
-			},
-		},
-		inspectPreset: {
-			label: 'Apply Inspector Preset',
-			icon: '🧭',
-			categories: ['presets'],
-			keywords: ['inspect', 'inspector'],
-			get can() {
-				return true
-			},
-			run() {
-				applyInspectorMode()
+				// Quake-style toggle: the same shortcut/button opens and closes.
+				if (consoleUi.open) {
+					closeConsole()
+					demoState.lastAction = 'Terminal closed'
+				} else {
+					openConsole()
+					demoState.lastAction = 'Terminal opened'
+				}
 			},
 		},
 	},
 	keys: {
 		'`': 'terminal',
-		N: 'notifications',
-		L: 'layout=vertical',
-		H: 'layout=horizontal',
-		T: 'theme=light',
-		D: 'theme=dark',
-		S: 'theme=system',
-		'+': 'fontSize:inc',
-		'-': 'fontSize:dec',
-		']': 'gameSpeed:inc',
-		'[': 'gameSpeed:dec',
-		M: 'mode=command',
-		I: 'mode=inspect',
-		R: 'reset',
+		N: 'autoOxygen',
+		S: 'shieldGenerator',
+		E: 'emergencyProtocol',
+		'Ctrl+S': 'saveGame',
+		'+': 'gameSpeed:inc',
+		'-': 'gameSpeed:dec',
+		'1': 'alertLevel=green',
+		'2': 'alertLevel=yellow',
+		'3': 'alertLevel=red',
 	},
 	get editable() {
 		return true
@@ -248,10 +353,15 @@ export const demoPalette = new Palette({
 	} as never,
 	editorDefaults: {
 		run: 'button',
+		boolean: 'toggle',
+		enum: 'select',
+		number: 'slider',
 	},
 })
 
 export const initialIdeConfig: PaletteBorders = {
+	// Top bar: instant actions + high-priority states. The command box opens
+	// first (VS-Code style), followed by the icon-only edit-mode toggle.
 	top: [
 		[
 			{
@@ -259,90 +369,70 @@ export const initialIdeConfig: PaletteBorders = {
 				toolbar: [
 					{
 						editor: 'commandBox',
-						config: { icon: '⌘', label: 'Command', hint: 'Search and run palette actions' },
+						config: { icon: '⌘', label: 'Command', hint: 'Search and run colony actions' },
 					},
 					{
-						tool: 'notifications',
+						tool: 'editToolbars',
 						editor: 'toggle',
-						config: { icon: '🔔', label: 'Notifications', hint: 'Compact icon toggle' },
+						config: { icon: '✏️', label: 'Edit toolbars', hint: 'Toggle toolbar editing' },
 					},
 					{
-						tool: 'layout',
-						editor: 'segmented',
-						config: { icon: '▤', label: 'Layout', hint: 'Head segmented (enum)' },
-					},
-					{
-						tool: 'theme',
-						editor: 'select',
-						config: { icon: '🎨', label: 'Theme', hint: 'Head select (enum)' },
-					},
-				],
-			},
-			{
-				space: 0.5,
-				toolbar: [
-					{
-						tool: 'mode',
-						editor: 'segmented',
-						config: { icon: '⌘', label: 'Mode', hint: 'Head segmented (enum)' },
-					},
-					{
-						tool: 'fontSize',
-						editor: 'slider',
-						config: { icon: 'A', label: 'Font size', hint: 'Demo slider override' },
-					},
-					{
-						editor: 'drawer',
-						toolbar: [
-							{
-								tool: 'notifications',
-								editor: 'toggle',
-								config: { icon: '🔔', label: 'Notifications', hint: 'Drawer toggle' },
-							},
-							{
-								tool: 'gameSpeed',
-								editor: 'stepper',
-								config: { icon: '▶', label: 'Speed', hint: 'Head stepper (number)' },
-							},
-						],
-						config: { icon: '▤', label: 'Tools', hint: 'Drawer popup (vertical)' },
-					},
-					{
-						tool: 'reset',
+						tool: 'emergencyProtocol',
 						editor: 'button',
-						config: { icon: '↺', label: 'Reset', hint: 'Head button (run)', tone: 'accent' },
+						config: { icon: '🚨', label: 'Lockdown', hint: 'Head button (run)', tone: 'accent' },
+					},
+					{
+						tool: 'autoOxygen',
+						editor: 'toggle',
+						config: { icon: '💨', label: 'Life support', hint: 'Compact icon toggle' },
+					},
+					{
+						tool: 'shieldGenerator',
+						editor: 'toggle',
+						config: { icon: '🛡️', label: 'Shields', hint: 'Compact icon toggle' },
+					},
+					{
+						tool: 'alertLevel',
+						editor: 'segmented',
+						config: { icon: '⚠️', label: 'Threat', hint: 'Head segmented (enum)' },
 					},
 				],
 			},
 		],
 	],
+	// Left border: simulation pacing + environmental settings.
 	left: [
 		[
 			{
 				space: 1,
 				toolbar: [
 					{
-						tool: 'theme',
-						editor: 'segmented',
-						config: { icon: '🌓', label: 'Theme', hint: 'Head segmented (enum)' },
+						tool: 'gameSpeed',
+						editor: 'slider',
+						config: { icon: '⏱️', label: 'Sim speed', hint: 'Demo slider override' },
 					},
 					{
-						tool: 'mode',
+						tool: 'colonyTheme',
 						editor: 'select',
-						config: { icon: '🎯', label: 'Mode', hint: 'Head select (enum)' },
+						config: { icon: '🪐', label: 'Atmosphere', hint: 'Head select (enum)' },
+					},
+					{
+						tool: 'powerPriority',
+						editor: 'segmented',
+						config: { icon: '🔌', label: 'Power focus', hint: 'Head segmented (enum)' },
 					},
 					{
 						editor: 'drawer',
 						toolbar: [
 							{
-								tool: 'theme',
+								tool: 'colonyTheme',
 								editor: 'select',
-								config: { icon: '🌓', label: 'Theme', hint: 'Nested drawer select' },
+								config: { icon: '🪐', label: 'Atmosphere', hint: 'Nested drawer select' },
 							},
 							{
-								tool: 'fontSize',
+								tool: 'gameSpeed',
 								editor: 'stepper',
-								config: { icon: 'A', label: 'Font size', hint: 'Nested drawer stepper' },
+								config: { icon: '⏱️', label: 'Sim speed', hint: 'Nested drawer stepper' },
 							},
 						],
 						config: { icon: '🗂', label: 'More', hint: 'Nested drawer (axis inversion)' },
@@ -351,58 +441,33 @@ export const initialIdeConfig: PaletteBorders = {
 			},
 		],
 	],
+	// Right border: economic + hardware performance parameters.
 	right: [
 		[
 			{
 				space: 0,
 				toolbar: [
 					{
-						tool: 'fontSize',
+						tool: 'taxRate',
 						editor: 'slider',
-						config: { icon: 'A', label: 'Font size', hint: 'Right rail slider' },
+						config: { icon: '🪙', label: 'Tax rate', hint: 'Demo slider override' },
 					},
 					{
-						tool: 'gameSpeed',
+						tool: 'solarEfficiency',
+						editor: 'stepper',
+						config: { icon: '☀️', label: 'Solar', hint: 'Head stepper (number)' },
+					},
+					{
+						tool: 'satisfaction',
 						editor: 'stars',
-						config: { icon: '▶', label: 'Speed', hint: 'Demo stars rating' },
+						config: { icon: '⭐', label: 'Morale', hint: 'Demo stars rating' },
 					},
 				],
 			},
 		],
 	],
+	// Bottom bar: developer utilities, save triggers, secondary commands.
 	bottom: [
-		[
-			{
-				space: 0.58,
-				toolbar: [
-					{
-						tool: 'gameSpeed',
-						editor: 'slider',
-						config: { icon: '▶', label: 'Playback speed', hint: 'Slider override' },
-					},
-					{
-						tool: 'theme',
-						editor: 'select',
-						config: { icon: '🌓', label: 'Theme', hint: 'Head select (enum)' },
-					},
-				],
-			},
-			{
-				space: 0.42,
-				toolbar: [
-					{
-						tool: 'layout',
-						editor: 'select',
-						config: { icon: '▤', label: 'Layout', hint: 'Head select (enum)' },
-					},
-					{
-						tool: 'fontSize',
-						editor: 'slider',
-						config: { icon: 'A', label: 'Type scale', hint: 'Slider override' },
-					},
-				],
-			},
-		],
 		[
 			{
 				space: 0.5,
@@ -410,27 +475,22 @@ export const initialIdeConfig: PaletteBorders = {
 					{
 						tool: 'terminal',
 						editor: 'button',
-						config: { icon: '`', label: 'Terminal', hint: 'Head button (run)' },
+						config: { icon: '💻', label: 'Terminal', hint: 'Head button (run)' },
 					},
 					{
-						tool: 'presentation',
+						tool: 'saveGame',
 						editor: 'button',
-						config: { icon: '🎬', label: 'Present', hint: 'Head button (run)' },
+						config: { icon: '💾', label: 'Save', hint: 'Head button (run)' },
 					},
 					{
-						tool: 'inspectPreset',
+						tool: 'resetSimulation',
 						editor: 'button',
-						config: { icon: '🧭', label: 'Inspect', hint: 'Head button (run)' },
+						config: { icon: '🔄', label: 'Reset', hint: 'Head button (run)', tone: 'accent' },
 					},
 					{
-						tool: 'theme',
-						editor: 'select',
-						config: { icon: '🎨', label: 'Theme', hint: 'Head select (enum)' },
-					},
-					{
-						tool: 'mode',
-						editor: 'select',
-						config: { icon: '⌘', label: 'Mode', hint: 'Head select (enum)' },
+						tool: 'fastMode',
+						editor: 'toggle',
+						config: { icon: '⚡', label: 'Hyper-tick', hint: 'Compact icon toggle' },
 					},
 				],
 			},

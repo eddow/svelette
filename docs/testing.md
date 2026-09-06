@@ -36,16 +36,19 @@ outside CI). `test.beforeEach` clears `localStorage` and reloads.
 
 - `e2e/smoke.spec.ts` (1): home page renders.
 - `e2e/palette.spec.ts` (6): edit toggle + `.palette-ide.editing` chrome;
-  command-box search/execute (`Set Theme to Dark` → `🎨 dark` pill); drawer open
-  with axis inversion (`is-vertical`) + Escape close; inspector via `pointerdown`
-  on `.toolbar-item-guard` (shortcut, move-back disabled / move-forward enabled →
-  `Item moved forward`); layout save → reload → restored badge → reset; pointer
-  drag reorder (`[commandBox, notifications, layout, theme]` →
-  `[commandBox, layout, theme, notifications]`).
+  command-box search/execute (`Set Threat Level to Red` → `⚠️ red` pill); drawer
+  open with axis inversion (left drawer → `is-horizontal`) + Escape close;
+  inspector via `pointerdown` on `.toolbar-item-guard` (shortcut, move-back
+  disabled / move-forward enabled → `Item moved forward`); layout save → reload
+  → restored badge → reset; pointer drag reorder (`[commandBox, editToolbars,
+  emergencyProtocol, autoOxygen, shieldGenerator, alertLevel]` →
+  `[commandBox, editToolbars, emergencyProtocol, shieldGenerator, alertLevel,
+  autoOxygen]`).
 - `e2e/console.spec.ts` (6): backtick opens console (Ide root focused first —
-  `paletteRoot` listens on root `keydown`); Terminal button + Escape; checkbutton
-  swaps `Command…` ↔ `Add to toolbar…`; add flow (entry → variant card → value);
-  catalogue rows `draggable`; catalogue drop inserts into first toolbar gap.
+  `paletteRoot` listens on root `keydown`); Terminal button + Escape (+ work-zone
+  `is-dimmed` while open); checkbutton swaps `Command…` ↔ `Add to toolbar…`;
+  add flow (Life Support entry → variant card → value); catalogue rows
+  `draggable`; catalogue drop inserts into first toolbar gap.
 
 E2E lessons (see `docs/architecture.md` §19–§20):
 
