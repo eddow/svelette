@@ -22,7 +22,6 @@
  * Pure algorithms (`resolveItemPlacementTarget`, serialization) are verbatim ports.
  */
 
-import { getContext, setContext } from 'svelte'
 import type {
 	PaletteBase,
 	PaletteBorder,
@@ -61,30 +60,6 @@ import type {
 	PaletteToolToolbarItem,
 	SerializedPaletteLayout,
 } from './types'
-
-/**
- * Typed Svelte context key carrying the palette scope record.
- *
- * `Ide.svelte` publishes its `$derived` scope; drawer portals (Phase 7)
- * propagate `palette` + `region` through `mount` props into the same shape.
- */
-const paletteScopeContextKey = Symbol('svelette:palette-scope')
-
-/**
- * Publish a palette scope record into Svelte context.
- */
-export function setPaletteScope<TSchema extends PaletteSchema>(scope: PaletteScope<TSchema>): void {
-	setContext(paletteScopeContextKey, scope)
-}
-
-/**
- * Read the palette scope record from Svelte context.
- */
-export function getPaletteScope<TSchema extends PaletteSchema>():
-	| PaletteScope<TSchema>
-	| undefined {
-	return getContext<PaletteScope<TSchema> | undefined>(paletteScopeContextKey)
-}
 
 /**
  * Factory signature used by `valueActions` to derive runnable commands from editable tools.

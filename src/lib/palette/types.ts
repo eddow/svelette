@@ -388,9 +388,7 @@ export type PaletteEditorChoice = {
  *
  * When a drawer editor creates a portal, `palette` and `region` must be propagated to the new root
  * scope so the child `Toolbar` can resolve tools and nested drawers receive a valid `surface.axis`.
- * In Svelte components prefer typed context (`setPaletteScope` / `getPaletteScope`)
- * over prop-drilling this record; the record remains the serializable payload
- * carried inside that context.
+ * The record is the serializable payload passed through `mount` props to the portal root.
  */
 export type PaletteScope<TSchema extends PaletteSchema = PaletteSchema> = Record<
 	string,
@@ -746,6 +744,22 @@ export interface Palette<TSchema extends PaletteSchema = PaletteSchema> {
 	 * configurator component.
 	 */
 	resolveEditorContext<
+		TTool extends PaletteToolOf<TSchema> | undefined,
+		TItem extends PaletteItem<TSchema>,
+	>(
+		item: TItem,
+		tool: TTool,
+		scope: PaletteScope<TSchema>,
+		flags?: PaletteEditorFlags
+	): PaletteEditorContext<TTool, TItem, TSchema>
+	/**
+	 * Build the `context` prop for a configurator component.
+	 *
+	 * Same shape as `resolveEditorContext`, but `scope` is the augmented
+	 * configurator scope (with `editorChoices` injected). Adapters render
+	 * `renderConfigurator`'s returned component with this context.
+	 */
+	resolveConfiguratorContext<
 		TTool extends PaletteToolOf<TSchema> | undefined,
 		TItem extends PaletteItem<TSchema>,
 	>(

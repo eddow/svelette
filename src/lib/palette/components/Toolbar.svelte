@@ -43,15 +43,17 @@
 	const editorScope = $derived<PaletteScope>(region !== undefined ? { ...scope, region } : scope)
 
 	// Resolve defensively: an item without a matching editor (or an unknown
-	// tool) renders nothing instead of throwing during render. The `as unknown`
-	// casts collapse the editor generic parameters at the render boundary.
+	// tool) renders nothing instead of throwing during render. Editor-only
+	// items (drawer, commandBox) carry no tool — they still resolve through
+	// the `item` registry, so only bail when a tool-backed lookup fails. The
+	// `as unknown` casts collapse the editor generic parameters at the render
+	// boundary.
 	function resolveItem(item: PaletteToolbarItem): {
 		Editor: Component<{ context: PaletteEditorContext }> | undefined
 		context: PaletteEditorContext | undefined
 	} {
 		try {
 			const tool = hasPaletteItemTool(item) ? palette.tool(item.tool) : undefined
-			if (tool === undefined) return { Editor: undefined, context: undefined }
 			return {
 				Editor: palette.renderEditor(item, tool, editorScope) as unknown as Component<{
 					context: PaletteEditorContext

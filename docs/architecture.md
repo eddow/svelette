@@ -226,6 +226,82 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   (13) is a verbatim port of `item-movement.spec.ts` locking the Phase 3
   `resolveItemPlacementTarget` contract.
 
+## 16. Demo editors & configurators (Phase 6 — implemented)
+
+- `src/lib/demo/editors/` holds plain Svelte editor components (no model layer, no variant
+  factory): `Button` / `SplitButton` (run), `Toggle` (boolean), `Flip` / `Radio` / `Select` /
+  `Segmented` / `SplitRadio` (enum), `Slider` / `Stepper` / `Stars` (number), `CommandBox`
+  (item). Each takes `context: PaletteEditorContext` and mutates the `$state` tool directly.
+- Shared helpers live in `editors/meta.ts` (`toolbarMeta` / `tooltip` / `layoutFromSurface` /
+  `regionFromScope` / `menuChevron` / enum-subset filtering + display). Helpers accept the
+  generic `PaletteToolbarItem<string, string, unknown>` (`AnyItem`) so demo components stay
+  assignable at the `Toolbar` render boundary without per-schema generics.
+- Split/menu editors (`SplitButton`, `SplitRadio`) use local `$state` open flags + plain
+  `{#if open}` menus (no `*Model` popover helpers); `Stars` renders `maximum` buttons with
+  `role="radio"`; `Slider` binds `min`/`max`/`step` from the number tool; `CommandBox` builds
+  its own `paletteCommandBoxModel` from `context.scope.palette` at init (editors receive only
+  `context`, so the box cannot be injected as a prop; seeding is deliberate and
+  `state_referenced_locally` is suppressed).
+- Configurators (`BaseConfigurator` label/icon/hint/editor/tone + `EnumSubsetConfigurator`
+  choice-display/allowed-values/keyword-filter) read `context.scope.editorChoices` injected by
+  `resolveConfiguratorScope`; `registry.ts` wires `spec(editor, configure, footprint)` per
+  family → variant, mirroring the reference `demoEditors` registry.
+- Demo palette (`src/lib/demo/palette.svelte.ts`): `$state` demo state + `Palette` with key
+  bindings, `editorDefaults: { run: 'button' }`, and `initialIdeConfig: PaletteBorders`
+  covering every tool family in every region (top command/toggle/splitRadio/select +
+  mode/slider/splitButton; left flip/splitRadio; right slider/stars; bottom stars/segmented +
+  segmented/slider). `src/routes/+page.svelte` renders `Ide` with `$state` borders, an
+  edit-mode toggle, and an inspector binding `renderConfigurator` +
+  `resolveConfiguratorContext` output to `<Configurator context>`.
+- Defensive failure mode confirmed: `Toolbar.svelte` try/catch renders nothing on unknown
+  tools/missing editors — desired, keeps broken items inert in edit mode instead of crashing
+  the bar.
+- Gates: `check` 0/0, `lint` clean, `test` 92 pass, `build` ok.
+
+## 17. Drawer editor (Phase 7 — implemented)
+
+- `src/lib/palette/drawer-editor.svelte.ts` ports `ui/src/palette/drawer-editor.tsx`:
+  `paletteDrawerCollapse` is module-level `$state({ version: 0 })` (same pattern as
+  `palettes`); `createPaletteDrawerEditor({ portalContainer })` returns a spec whose
+  `editor` is the shared `DrawerEditor` component (`flags: { footprint: 'horizontal' }`).
+  Dropped with rationale: per-instance `triggerClass` / `overlayClass` / `popupClass` /
+  `popupExtraClass` (CSS is global — `svelette-palette-drawer__*` in `styles/palette.css`),
+  `renderIcon: JSX.Element` / `renderTrigger` (icons are `PaletteIcon`, trigger is fixed
+  icon + label + chevron), `triggerStyle` (no parent-toolbar square-size override to fight).
+- `components/DrawerEditor.svelte` (trigger) + `components/DrawerPopup.svelte` (portal root)
+  replace `latch(host, jsx, env)`: the trigger holds local `$state` `open` + `popupPos`,
+  the portal `$effect` reads `open`/`item` up-front (so close re-runs teardown), then
+  `mount(DrawerPopup, { target: host })` into `document.body` (or the factory
+  `portalContainer`); teardown removes listeners + `unmount(app)` + `host.remove()`.
+  `DrawerPopup` publishes `palette` + child `region` via `setPaletteScope` and binds the
+  same scope to the child `Toolbar` — nested drawers resolve tools and invert their own
+  axis without prop-drilling.
+- Perpendicular-direction contract (verbatim): child direction inverts the parent axis,
+  child region follows (`vertical` → `'left'`, `horizontal` → `'top'`).
+  `open` (`click` | `hover` | `press`) and `placement` (`start` | `center` | `end`) come
+  from the item `config`, defaulting to `click` / `center`.
+- Collapse signal: drawers track a plain non-reactive `seenVersion` (seeds on first
+  run, closes on later bumps — no `untrack` idiom). `syncPopup()` only assigns
+  `popupPos` when the rect actually changed — unconditional writes re-trigger the portal
+  effect forever (`effect_update_depth_exceeded`); the whole read sits in try/catch so a
+  detached trigger can never break the effect.
+- Portal hygiene: the missing-palette guard runs before `appendChild` (no leaked host
+  `<div>`); the portal receives the shared `$state` `popupPos` object so resize/scroll
+  re-renders in place instead of remounting (nested state preserved). `open: 'hover'`
+  uses a 120ms leave-grace: trigger-leave schedules a close that popup-enter cancels,
+  so the pointer can travel to the body-portaled popup. Scope flows via props today
+  (explicit, serializable); `setPaletteScope`/`getPaletteScope` stay as the documented
+  portal-propagation path (`Ide` + `DrawerPopup` publish it).
+- `Toolbar.svelte` editor-only fix: `resolveItem` no longer bails on `tool === undefined`,
+  so `drawer` / `commandBox` items resolve through the `item` registry (tool-backed items
+  still render nothing on unknown tools — desired). `Palette` interface gains the missing
+  `resolveConfiguratorContext` (already on the class; `DrawerPopup`'s `Toolbar` needs it
+  for the `<PaletteItem>` bind). Demo registry wires `item.drawer`; demo layout adds a top
+  drawer (toggle + stars) and a left drawer with a nested toolbar (segmented + stepper).
+- Tests: `tests/palette/drawer.test.ts` (6) — factory shape, open-on-click + Escape close,
+  collapse-signal close, axis inversion both ways, popup scope publishing, hover travel
+  stays open. Gates: `check` 0/0, `lint` clean, `test` 101 pass, `build` ok.
+
 ## 14. Tooling conventions
 
 - Lint/format: `npm run lint` / `npm run lint:fix` (Biome — tabs, single quotes, `asNeeded`

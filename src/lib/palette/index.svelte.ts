@@ -30,6 +30,13 @@ export {
 	serializePaletteCatalogDragPayload,
 	setPaletteCommandBoxInput,
 } from './command-box.svelte'
+export {
+	createPaletteDrawerEditor,
+	getDrawerPortalContainer,
+	type PaletteDrawerEditorOptions,
+	paletteDefaultDrawerEditor,
+	paletteDrawerCollapse,
+} from './drawer-editor.svelte'
 export { createPaletteKeys, normalizePaletteKeystroke, paletteKeystrokeFromEvent } from './keys'
 export {
 	actualTrackSpaceAt,
@@ -60,7 +67,6 @@ export {
 } from './layout.svelte'
 export {
 	clearPaletteCatalogDragOnNativeDragEnd,
-	getPaletteScope,
 	hasPaletteItemTool,
 	hydratePaletteLayout,
 	isEditableTool,
@@ -81,7 +87,6 @@ export {
 	resolveItemPlacementTarget,
 	resolvePaletteEditor,
 	serializePaletteLayout,
-	setPaletteScope,
 	surfaceContextFromScope,
 	validatePaletteLayout,
 	valueActions,

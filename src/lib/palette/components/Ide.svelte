@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte'
 	import type { SvelteHTMLElements } from 'svelte/elements'
 	import { paletteRoot } from '../layout.svelte'
-	import { type Palette as PaletteRuntime, setPaletteScope } from '../palette.svelte'
+	import type { Palette as PaletteRuntime } from '../palette.svelte'
 	import type { PaletteBorder, PaletteScope } from '../types'
 	import ToolbarBorder from './ToolbarBorder.svelte'
 
@@ -39,14 +39,7 @@
 	// The scope record is the serializable payload editors read (`palette` +
 	// `region`); children stamp `region` at the border level. `$derived` keeps
 	// it reactive if the `palette` prop changes without recreating it per render.
-	// Published into Svelte context for drawer portals (Phase 7); layout
-	// children additionally receive it via the `scope` prop. The init-time read
-	// of `palette` is deliberate: the scope seeds once, then stays reactive via
-	// `$derived` (svelte-check `state_referenced_locally` is a false positive
-	// here — the reference is inside the `$derived` expression).
 	const scope = $derived<PaletteScope>({ palette })
-	// svelte-ignore state_referenced_locally
-	setPaletteScope(scope)
 </script>
 
 <div
