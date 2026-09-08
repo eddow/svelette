@@ -1,42 +1,36 @@
 /**
- * Single entry point for the headless palette system.
+ * Read-only palette surface: display + run, no mutation.
  *
- * Re-exports the public API surface of `@sursaut/ui/palette`
- * (`ui/src/palette/index.ts`) adapted for Svelte 5.
+ * A read-only consumer (predefined layout, `editable: false`) imports only
+ * this barrel: the `Palette` runtime, tool/spec resolution, keys, layout
+ * display helpers, editor resolution, the command-box **run** model, and the
+ * headless presenters. Nothing here can mutate a layout.
+ *
+ * `edition` (`./edition.svelte`) re-exports this barrel and adds the mutation
+ * surface.
  */
 
 export {
 	handlePaletteCommandBoxInputKeydown,
 	handlePaletteCommandChipKeydown,
-	PALETTE_CATALOG_DRAG_MIME,
-	type PaletteAddItemCommandEntry,
-	type PaletteAddItemSource,
-	type PaletteCatalogDragPayload,
-	type PaletteCatalogDragSpecPayload,
-	type PaletteCatalogDragVariantPayload,
 	type PaletteCommandBoxEntry,
 	type PaletteCommandBoxKeywordSuggestion,
 	type PaletteCommandBoxModel,
 	type PaletteCommandBoxQuery,
-	type PaletteDerivedVariant,
-	paletteAddItemEntries,
-	paletteCatalogEntries,
 	paletteCommandBoxModel,
 	paletteCommandEntries,
-	paletteDerivedVariants,
 	paletteEnumSubsetValues,
-	paletteToolbarItemFromCatalogPayload,
-	parsePaletteCatalogDragPayload,
-	serializePaletteCatalogDragPayload,
 	setPaletteCommandBoxInput,
 } from './command-box.svelte'
 export {
-	createPaletteDrawerEditor,
-	getDrawerPortalContainer,
-	type PaletteDrawerEditorOptions,
-	paletteDefaultDrawerEditor,
-	paletteDrawerCollapse,
-} from './drawer-editor.svelte'
+	type ConsoleMode,
+	type ConsoleState,
+	closeConsole,
+	consoleState,
+	consoleTool,
+	openConsole,
+	toggleConsole,
+} from './console.svelte'
 export {
 	createPaletteKeys,
 	isPaletteKeys,
@@ -44,52 +38,26 @@ export {
 	paletteKeystrokeFromEvent,
 } from './keys'
 export {
-	actualTrackSpaceAt,
-	beginPaletteCatalogInsertDrag,
 	clampUnit,
-	insertToolbar,
-	insertTrackWithToolbar,
 	isEditableTarget,
-	type PaletteDragOrigin,
-	type PaletteDragTarget,
-	type PaletteItemDragTarget,
 	type PaletteOrientation,
-	type PaletteStackSpace,
-	type PaletteToolbarDrag,
-	type PaletteToolbarSpace,
-	type PaletteTrackSpace,
-	paletteItemDrag,
-	paletteItemShield,
 	paletteRoot,
-	paletteStackSpace,
-	paletteToolbarDrag,
-	paletteToolbarSpace,
-	paletteTrackSpace,
 	regionDirection,
-	removeEmptyTrack,
-	removeToolbar,
-	resizeToolbar,
 } from './layout.svelte'
 export {
-	clearPaletteCatalogDragOnNativeDragEnd,
 	hasPaletteItemTool,
 	hydratePaletteLayout,
 	isEditableTool,
-	isEditing,
 	isRunTool,
-	notifyPaletteCatalogNativeDragStarted,
 	Palette,
 	PaletteError,
 	type PaletteValueAction,
 	type PaletteValueActions,
 	paletteDefaultEditorCapabilities,
 	paletteEnumValueKeywords,
-	palettes,
 	paletteTool,
 	paletteToolFamily,
-	renderPaletteConfigurator,
 	renderPaletteEditor,
-	resolveItemPlacementTarget,
 	resolvePaletteEditor,
 	serializePaletteLayout,
 	surfaceContextFromScope,
@@ -107,8 +75,6 @@ export {
 	type HeadChoiceDisplay,
 	type HeadEnumSubsetConfig,
 	type HeadItemConfigBase,
-	handlePaletteCommandBoxInputKeydown as handlePresenterCommandBoxInputKeydown,
-	handlePaletteCommandChipKeydown as handlePresenterCommandChipKeydown,
 	headLayoutFromSurface,
 	headMeta,
 	headRegionFromScope,
@@ -117,7 +83,6 @@ export {
 	type SelectPresenter,
 	type SliderPresenter,
 	selectPresenter,
-	setPaletteCommandBoxInput as setPresenterCommandBoxInput,
 	sliderPresenter,
 	type TogglePresenter,
 	togglePresenter,

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { paletteCommandBoxModel } from '$lib/palette/index.svelte'
+	import { paletteCommandBoxModel } from '$lib/palette/edition.svelte'
 
 	let { onModel }: { onModel: (model: ReturnType<typeof paletteCommandBoxModel>) => void } =
 		$props()

@@ -37,6 +37,14 @@
 		0 0 0 4px rgba(96, 165, 250, 0.18);
 }
 
+/* The item currently being inspected (selected for edition) is highlighted so
+ * the configurator in the console reads against the live editor. */
+.palette-ide.editing .toolbar-item[data-inspected='true'] {
+	box-shadow:
+		0 0 0 1px rgba(96, 165, 250, 0.72),
+		0 0 0 4px rgba(96, 165, 250, 0.22);
+}
+
 .palette-ide {
 	display: flex;
 	flex-direction: column;

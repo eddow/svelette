@@ -6,8 +6,8 @@ Four families (`src/lib/palette/types.ts`):
 
 | Family    | Shape                                              | Examples                          |
 | --------- | -------------------------------------------------- | --------------------------------- |
-| `run`     | `{ run(), can }`                                   | `terminal`, `saveGame`, `emergencyProtocol` |
-| `boolean` | `{ type: 'boolean', value, default }`              | `autoOxygen`, `editToolbars`      |
+| `run`     | `{ run(), can }`                                   | `console`, `saveGame`, `emergencyProtocol` |
+| `boolean` | `{ type: 'boolean', value, default }`              | `autoOxygen`, `shieldGenerator`   |
 | `enum`    | `{ type: 'enum', value, default, values[] }`       | `alertLevel`, `colonyTheme`, `powerPriority` |
 | `number`  | `{ type: 'number', value, default, min?, max?, step? }` | `gameSpeed`, `taxRate`, `satisfaction` |
 
@@ -44,7 +44,7 @@ prebuilt registry). Keystrokes normalize (`Ctrl`/`Alt`/`Shift`/`Meta` order, `cm
 `escape`→`Esc`, single chars uppercased). `paletteRoot` resolves `keydown` on the
 IDE root (skips editable targets) and runs the tool: run tools execute when
 `can`, boolean tools toggle. Demo bindings live in `src/lib/demo/palette.svelte.ts`
-(`` ` `` terminal toggle, `N` life support, `S` shields, `E` lockdown,
+(`` ` `` console toggle, `N` life support, `S` shields, `E` lockdown,
 `Ctrl+S` save, `+`/`-` sim speed, `1/2/3` threat presets).
 
 ## Palette class (`src/lib/palette/palette.svelte.ts`)
@@ -107,8 +107,9 @@ render nothing — inert by design, so broken items never crash the bar.
   the headless descriptor: `title`/`subtitle`, `structure` (move
   backward/forward enabled, removable), `presentation` (`currentEditor`,
   `editorChoices` filtered by capabilities), `bindings` (`shortcut` from
-  `keys.findByTool`). The demo inspector resolves the live toolbar/index by item
-  identity and splices the real layout for move/remove.
+  `keys.findByTool`). The console (head `Console.svelte`) renders the
+  **presentation-only** configurator for the current selection; structural
+  actions (`structure`) are advisory — the demo does not expose move/remove.
 
 ## Icons
 

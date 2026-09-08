@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { mount, unmount } from 'svelte'
 	import type { SvelteHTMLElements } from 'svelte/elements'
-	import { getDrawerPortalContainer, paletteDrawerCollapse } from '../drawer-editor.svelte'
+	import { getDrawerPortalContainer, paletteDrawerCollapse } from '../drawer-state.svelte'
 	import type {
 		PaletteDrawerToolbarItem,
 		PaletteEditorContext,

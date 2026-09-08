@@ -5,7 +5,7 @@ import {
 	Palette,
 	serializePaletteLayout,
 	validatePaletteLayout,
-} from '$lib/palette/index.svelte'
+} from '$lib/palette/edition.svelte'
 import type { PaletteBorders, SerializedPaletteLayout } from '$lib/palette/types'
 import HydratedBordersProbe from './HydratedBordersProbe.svelte'
 

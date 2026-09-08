@@ -30,15 +30,10 @@
  */
 
 import DrawerEditor from './components/DrawerEditor.svelte'
+import { setDrawerPortalContainer } from './drawer-state.svelte'
 import type { PaletteEditorSpec, PaletteItem, PaletteSchema } from './types'
 
-/**
- * Shared collapse signal: bump `version` to close all open drawer popups.
- *
- * Drawers subscribe via `$effect` and close on change. Module-level `$state`
- * (same pattern as `palettes`), so any importer reacts to bumps.
- */
-export const paletteDrawerCollapse = $state({ version: 0 })
+export { getDrawerPortalContainer, paletteDrawerCollapse } from './drawer-state.svelte'
 
 /**
  * Options for {@link createPaletteDrawerEditor}.
@@ -57,15 +52,6 @@ export interface PaletteDrawerEditorOptions {
 	portalContainer?: HTMLElement
 }
 
-let defaultDrawerPortalContainer: HTMLElement | undefined
-
-/**
- * Resolve the portal container for drawer popups.
- */
-export function getDrawerPortalContainer(): HTMLElement | undefined {
-	return defaultDrawerPortalContainer
-}
-
 /**
  * Create a drawer editor spec for the `"drawer"` editor variant.
  *
@@ -76,7 +62,7 @@ export function createPaletteDrawerEditor<
 	TSchema extends PaletteSchema = PaletteSchema,
 	TItem extends PaletteItem<TSchema> = PaletteItem<TSchema>,
 >(options: PaletteDrawerEditorOptions = {}): PaletteEditorSpec<undefined, TItem, TSchema> {
-	if (options.portalContainer) defaultDrawerPortalContainer = options.portalContainer
+	if (options.portalContainer) setDrawerPortalContainer(options.portalContainer)
 	return {
 		editor: DrawerEditor as unknown as PaletteEditorSpec<undefined, TItem, TSchema>['editor'],
 		flags: { footprint: 'horizontal' },

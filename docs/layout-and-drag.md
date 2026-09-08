@@ -76,7 +76,8 @@ marks `palettes.catalogDrag` so drop zones stay hittable; cleared on window
 One palette editable at a time (`palettes.editing`). `paletteRoot` toggles
 `editing`/`palette-editing` classes + `data-editing`; global CSS renders the
 hover/active chrome (see `docs/theming.md`). `paletteItemDrag` sets
-`palettes.inspecting = { item, palette, region }` on `pointerdown`; the demo
-inspector renders `renderConfigurator` + `resolveConfiguratorContext` output and
-mutates the live toolbar (move backward/forward via splice, remove, shortcut
-display from `describeItemConfiguration`).
+`palettes.inspecting = { item, palette, region }` on `pointerdown`; the console
+renders the presentation-only inspector (`renderConfigurator` +
+`resolveConfiguratorContext` output) in its *Details* panel, and the inspected
+item is highlighted (`data-inspected`) on the toolbar. Structural edits
+(move/remove) are out of scope — drag reorder is the structural mechanism.

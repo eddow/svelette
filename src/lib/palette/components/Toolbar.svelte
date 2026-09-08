@@ -103,6 +103,12 @@
 
 	const editing = $derived(palette.editing)
 	const dragging = $derived(draggingToolbar === toolbar)
+	const inspecting = $derived(
+		palettes.inspecting?.palette === palette ? palettes.inspecting : undefined
+	)
+	function isInspecting(item: PaletteToolbarItem): boolean {
+		return inspecting?.item === item
+	}
 </script>
 
 <div
@@ -126,6 +132,7 @@
 			class="toolbar-item"
 			data-tool={'tool' in item ? (item.tool ?? undefined) : undefined}
 			data-editor={'editor' in item ? (item.editor ?? undefined) : undefined}
+			data-inspected={isInspecting(item) ? 'true' : undefined}
 		>
 			<div class="toolbar-item-content" use:paletteItemShield={shieldActive()}>
 				{#if resolved.Editor && resolved.context}

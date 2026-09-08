@@ -5,10 +5,11 @@ a11y semantics, tool resolution, editing, drag/drop, **and HTML structure**. The
 core owns logic + functioning; "heads" are presentation-only components (markup + CSS
 bound to headless presenters) placed in a page.
 
-- Core: `src/lib/palette/` — headless (barrel: `src/lib/palette/index.svelte.ts`)
+- Core: `src/lib/palette/` — headless (barrels: `core.svelte.ts` read-only,
+  `edition.svelte.ts` mutation surface re-exporting core)
 - Head: `src/lib/head/` — the standard default theme (barrel: `src/lib/head/registry.ts`)
-- Demo: `src/routes/+page.svelte` + `src/lib/demo/` (tools, editors, console overlay)
-- Tests: `tests/` (107 unit) + `e2e/` (13 Playwright)
+- Demo: `src/routes/+page.svelte` + `src/lib/demo/` (tools, editors)
+- Tests: `tests/` (113 unit) + `e2e/` (12 Playwright)
 
 ## Quickstart
 
@@ -26,7 +27,7 @@ Scratch files go in `sandbox/` (git-ignored), never `/tmp`.
 ## Minimal usage
 
 ```ts
-import { Palette } from '$lib/palette/index.svelte'
+import { Palette } from '$lib/palette/core.svelte'
 import { headEditors } from '$lib/head/registry'
 
 const palette = new Palette({
@@ -92,7 +93,13 @@ The shipped head (`src/lib/head/registry.ts`) provides a small standard set:
 two `number` editors to prove extension — `slider` (same-key **override**, value
 badge) and `stars` (**extension**, play/rating row). See `docs/creating-a-head.md`.
 
-## Command box
+## Command box & console
+
+The `commandBox` editor is a real **commands-combo-box** (text input + results popup,
+Ctrl-Shift-P style) that runs commands inline on the toolbar — a run surface. The
+**console** is a separate modal (opened by the `console` run tool / key); it opens in
+edit mode when a `commandBox` is on the toolbar, else command-first with a square
+edit-icon button (R/W only). Closing the console always stops edition.
 
 `paletteCommandEntries` (run), `paletteAddItemEntries` (add sources),
 `paletteDerivedVariants` (concrete insertable variants), `paletteCatalogEntries`

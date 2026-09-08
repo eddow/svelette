@@ -217,18 +217,24 @@
 /* ── Command Popup Overlay ── */
 
 .palette-default-command-overlay {
-	position: absolute;
+	position: fixed;
 	inset: 0;
 	display: grid;
 	place-items: center;
 	padding: 1rem;
 	background: transparent;
+	/* Non-blocking backdrop: the work-zone dimming + `pointer-events: none`
+	 * (`.demo-center.is-dimmed`) already disable it; the borders must stay
+	 * interactive in edit mode (click a toolbar item to inspect it). Only the
+	 * panel captures pointer events. */
+	pointer-events: none;
 	z-index: 40;
 	box-sizing: border-box;
 }
 
 .palette-default-command-panel {
 	inline-size: 100%;
+	max-inline-size: 48rem;
 	max-block-size: calc(100vh - 2rem);
 	padding: 10px;
 	border: 1px solid rgba(71, 85, 105, 0.92);
@@ -238,6 +244,7 @@
 	box-sizing: border-box;
 	position: relative;
 	overflow: auto;
+	pointer-events: auto;
 }
 
 .palette-default-command-top {

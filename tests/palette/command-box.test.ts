@@ -14,7 +14,7 @@ import {
 	paletteToolbarItemFromCatalogPayload,
 	parsePaletteCatalogDragPayload,
 	serializePaletteCatalogDragPayload,
-} from '$lib/palette/index.svelte'
+} from '$lib/palette/edition.svelte'
 import type { PaletteConfig, PaletteEditorComponent } from '$lib/palette/types'
 
 const StubEditor = (() => {}) as unknown as PaletteEditorComponent

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveItemPlacementTarget } from '$lib/palette/index.svelte'
+import { resolveItemPlacementTarget } from '$lib/palette/edition.svelte'
 import type { PaletteBorders, PaletteRegion, PaletteToolbarItem } from '$lib/palette/types'
 
 // Verbatim port of `ui/src/palette/item-movement.spec.ts`: `resolveItemPlacementTarget`

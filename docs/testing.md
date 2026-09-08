@@ -1,6 +1,6 @@
 # Testing
 
-## Unit (Vitest, jsdom) — 101 tests, 10 files
+## Unit (Vitest, jsdom) — 113 tests, 12 files
 
 Run: `npm run test`. Config: `vitest.config.ts` (`environment: jsdom`,
 `resolve.conditions: ['browser']`, alias `$lib`, setup `tests/setup.ts`).
@@ -17,6 +17,8 @@ Run: `npm run test`. Config: `vitest.config.ts` (`environment: jsdom`,
 | `tests/palette/item-movement.test.ts` | 13 | `resolveItemPlacementTarget` contract |
 | `tests/palette/drawer.test.ts` | 6 | factory shape, open/Escape, collapse signal, axis inversion, popup scope, hover travel |
 | `tests/palette/editors.test.ts` | 3 | toggle/select editors, `BaseConfigurator` editor-choices |
+| `tests/palette/export-split.test.ts` | 2 | core/edition boundary (core lacks mutation, edition re-exports core) |
+| `tests/palette/console.test.ts` | 5 | console without `commandBox`: run shows toggle + run box only, edit shows add box + details (tools panel after selection), toggle flips mode, edit add-box results are draggable tools, read-only (`editable: false`) shows no toggle and stays in run mode |
 
 Gotchas:
 
@@ -29,26 +31,28 @@ Gotchas:
 - `paletteCommandBoxModel` / `hydratePaletteLayout` must be created during
   probe init, never in handlers (same init-time constraint as app code).
 
-## E2E (Playwright) — 13 tests, 3 files
+## E2E (Playwright) — 12 tests, 3 files
 
 Run: `npm run test:e2e` (builds + previews on port 4173, `reuseExistingServer`
 outside CI). `test.beforeEach` clears `localStorage` and reloads.
 
 - `e2e/smoke.spec.ts` (1): home page renders.
-- `e2e/palette.spec.ts` (6): edit toggle + `.palette-ide.editing` chrome;
-  command-box search/execute (`Set Threat Level to Red` → `⚠️ red` pill); drawer
+- `e2e/palette.spec.ts` (5): command launcher + `.palette-ide.editing` chrome;
+  drawer
   open with axis inversion (left drawer → `is-horizontal`) + Escape close;
-  inspector via `pointerdown` on `.toolbar-item-guard` (shortcut, move-back
-  disabled / move-forward enabled → `Item moved forward`); layout save → reload
-  → restored badge → reset; pointer drag reorder (`[commandBox, editToolbars,
+  inspector via `pointerdown` on `.toolbar-item-guard` (presentation-only
+  configurator in the console, selected item highlighted); layout save → reload
+  → restored badge → reset; pointer drag reorder (`[commandBox,
   emergencyProtocol, autoOxygen, shieldGenerator, alertLevel]` →
-  `[commandBox, editToolbars, emergencyProtocol, shieldGenerator, alertLevel,
-  autoOxygen]`).
-- `e2e/console.spec.ts` (6): backtick opens console (Ide root focused first —
-  `paletteRoot` listens on root `keydown`); Terminal button + Escape (+ work-zone
-  `is-dimmed` while open); checkbutton swaps `Command…` ↔ `Add to toolbar…`;
-  add flow (Life Support entry → variant card → value); catalogue rows
-  `draggable`; catalogue drop inserts into first toolbar gap.
+  `[commandBox, emergencyProtocol, shieldGenerator, alertLevel, autoOxygen]`).
+- `e2e/console.spec.ts` (8): backtick opens the edit-only console (Ide root
+  focused first — `paletteRoot` listens on root `keydown`); Console button +
+  Escape (+ work-zone `is-dimmed` while open); command-first mode (no combobox →
+  square edit button toggles to edit); read-only mode (no edit button, stays
+  command-first); edit-inert (toolbar item content `inert` while editing); no mode
+  button when a `commandBox` tool is displayed; add flow (Life Support entry →
+  variant card → value in the single details panel); tools-panel rows `draggable`;
+  tools-panel drop inserts into first toolbar gap.
 
 E2E lessons (see `docs/architecture.md` §19–§20):
 
@@ -60,10 +64,8 @@ E2E lessons (see `docs/architecture.md` §19–§20):
   (`rect.left`), never a `+2px` nudge.
 - `new DragEvent(..., { dataTransfer })` rejects non-native transfers — fire
   plain `Event`s with a shadowed `dataTransfer` stub.
-- Command-box popover needs a visibility wait (140ms `inline-size` transition
-  delays visibility vs. actionability).
 
 ## Gates
 
-`npm run check` (0 errors) · `npm run lint` (clean) · `npm run test` (101 pass) ·
-`npm run test:e2e` (13 pass) · `npm run build` ok.
+`npm run check` (0 errors) · `npm run lint` (clean) · `npm run test` (113 pass) ·
+`npm run test:e2e` (12 pass) · `npm run build` ok.

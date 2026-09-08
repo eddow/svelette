@@ -18,7 +18,7 @@ functions from `PaletteEditorContext` to render data, zero markup, zero CSS:
 | `togglePresenter(context)` | boolean | `{ icon, title, tone, pressed, toggle() }` |
 | `selectPresenter(context)` | enum | `{ title, tone, icon, value, options[{value,text}], select }` |
 | `sliderPresenter(context)` | number | `{ title, tone, icon, direction, region, min, max, step, value, set }` |
-| `commandBoxPresenter({ context, placeholder? })` | item | `{ title, icon, box, expanded, setFocused }` (`box` is the headless `paletteCommandBoxModel`) |
+| `commandBoxPresenter({ context })` | item | `{ title, icon, label, hint, model }` (a real combobox — runs commands inline) |
 | `configuratorPresenter(context)` | any | `{ label, icon, hint, tone, editor, editorChoices, setText, setTone, setEditor }` |
 
 Shared helpers moved out of the demo into core: `headMeta` (item `config` with
@@ -27,9 +27,7 @@ label/icon/hint/tone defaults), `headTooltip` (`label · suffix`), `headLayoutFr
 (defaults to `'top'`). Enum-subset filtering (`values`/`keywords` config +
 `choiceDisplay`) lives inside `selectPresenter`, not in head components.
 
-Re-exported from `src/lib/palette/index.svelte.ts` (as `buttonPresenter`, … plus
-`handlePresenterCommandBoxInputKeydown` / `handlePresenterCommandChipKeydown` /
-`setPresenterCommandBoxInput` aliases for the command-box bindings).
+Re-exported from `src/lib/palette/core.svelte.ts` (as `buttonPresenter`, …).
 
 Rule enforced by construction: heads must be dumb — no `tool.value = …`, no
 `tool.run()`, no `paletteCommandEntries` calls inside `.svelte`. All mutation lives
@@ -49,9 +47,8 @@ factory), then rewrote every component to bind its presenter:
   (keeps optional `onChange`).
 - `SliderEditor.svelte` → `sliderPresenter`, binds `view.title/tone/icon/direction/region/
   min/max/step/value/set()` (keeps optional `onChange`).
-- `CommandBoxEditor.svelte` → `commandBoxPresenter({ context })` once at component
-  init (same `$state` init-time constraint as `paletteCommandBoxModel`), binds
-  `view.title/icon/box/expanded/setFocused()`.
+- `CommandBoxEditor.svelte` → `commandBoxPresenter({ context })`, binds a
+  `paletteCommandBoxModel` (combobox: input + results popup, runs commands inline).
 - `BaseConfigurator.svelte` → `configuratorPresenter`, binds `view.label/icon/hint/tone/
   editor/editorChoices/setText/setTone/setEditor()`.
 

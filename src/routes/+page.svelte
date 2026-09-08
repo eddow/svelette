@@ -1,24 +1,25 @@
 <script lang="ts">
-	import type { Component } from 'svelte'
 	import { onMount } from 'svelte'
-	import ConsoleOverlay from '$lib/demo/ConsoleOverlay.svelte'
-	import { consoleUi } from '$lib/demo/console.svelte'
-	import { demoPalette, demoState, initialIdeConfig } from '$lib/demo/palette.svelte'
-	import Ide from '$lib/palette/components/Ide.svelte'
 	import {
-		palettes,
-		serializePaletteLayout,
-		validatePaletteLayout
-	} from '$lib/palette/index.svelte'
-	import type {
-		PaletteBorder,
-		PaletteEditorContext,
-		SerializedPaletteLayout
-	} from '$lib/palette/types'
+		type DemoMode,
+		demoConfigs,
+		demoLayoutFor,
+		demoPalette,
+		demoState
+	} from '$lib/demo/palette.svelte'
+	import Console from '$lib/head/Console.svelte'
+	import Ide from '$lib/palette/components/Ide.svelte'
+	import { consoleState } from '$lib/palette/console.svelte'
+	import { serializePaletteLayout, validatePaletteLayout } from '$lib/palette/edition.svelte'
+	import type { PaletteBorder, SerializedPaletteLayout } from '$lib/palette/types'
 	import '$lib/palette/styles/palette.css'
 	import '$lib/head/styles/head-default.css'
 
 	const LAYOUT_STORAGE_KEY = 'svelette-demo-layout-v1'
+
+	// The active demo configuration. Default to `rw-combobox` (matches the legacy
+	// demo); each mode has its own reset button that re-loads its layout.
+	let activeMode = $state<DemoMode>('rw-combobox')
 
 	function readStoredLayout(): SerializedPaletteLayout | undefined {
 		try {
@@ -32,12 +33,13 @@
 		}
 	}
 
-	// Seed fresh clones so edits never mutate the shared `initialIdeConfig`
-	// module object, and so server + client first render are identical.
-	const top = $state(structuredClone(initialIdeConfig.top))
-	const left = $state(structuredClone(initialIdeConfig.left))
-	const right = $state(structuredClone(initialIdeConfig.right))
-	const bottom = $state(structuredClone(initialIdeConfig.bottom))
+	// Seed fresh clones so edits never mutate the shared config layout objects,
+	// and so server + client first render are identical.
+	const initial = demoLayoutFor('rw-combobox')
+	const top = $state(structuredClone(initial.top))
+	const left = $state(structuredClone(initial.left))
+	const right = $state(structuredClone(initial.right))
+	const bottom = $state(structuredClone(initial.bottom))
 	let layoutRestored = $state(false)
 
 	// Theme resolution: `demoState.theme` is the setting (`light`/`dark`/`system`);
@@ -92,13 +94,19 @@
 	})
 
 	function applyStoredLayout(stored: SerializedPaletteLayout): void {
-		// Serialized borders share the runtime shape of `PaletteBorder`; the
-		// `readonly`/union friction is compile-time only, so cast once.
-		const borders = stored.borders as unknown as Record<string, PaletteBorder>
-		top.splice(0, top.length, ...borders.top)
-		left.splice(0, left.length, ...borders.left)
-		right.splice(0, right.length, ...borders.right)
-		bottom.splice(0, bottom.length, ...borders.bottom)
+		// Serialized borders are flat slot lists (`{ space, toolbar }[]`);
+		// runtime borders are track lists (`{ space, toolbar }[][]`). Re-nest
+		// each stored slot as its own single-slot track — the same shape
+		// `hydratePaletteLayout` produces — then splice into the `$state`
+		// proxies so the inserted data stays reactive.
+		const nest = (slots: SerializedPaletteLayout['borders']['top']): PaletteBorder =>
+			slots.map((slot) => [
+				{ space: slot.space, toolbar: slot.toolbar as PaletteBorder[number][number]['toolbar'] }
+			]) as PaletteBorder
+		top.splice(0, top.length, ...nest(stored.borders.top))
+		left.splice(0, left.length, ...nest(stored.borders.left))
+		right.splice(0, right.length, ...nest(stored.borders.right))
+		bottom.splice(0, bottom.length, ...nest(stored.borders.bottom))
 	}
 
 	function persistLayout() {
@@ -111,134 +119,50 @@
 		}
 	}
 
+	/** Load a demo configuration (its own reset button re-applies this). */
+	function loadMode(id: DemoMode) {
+		activeMode = id
+		const layout = demoLayoutFor(id)
+		top.splice(0, top.length, ...structuredClone(layout.top))
+		left.splice(0, left.length, ...structuredClone(layout.left))
+		right.splice(0, right.length, ...structuredClone(layout.right))
+		bottom.splice(0, bottom.length, ...structuredClone(layout.bottom))
+		layoutRestored = false
+		demoState.lastAction = `Loaded "${demoConfigs.find((c) => c.id === id)?.label ?? id}"`
+	}
+
 	function resetLayout() {
 		try {
 			localStorage.removeItem(LAYOUT_STORAGE_KEY)
 		} catch {
 			// ignore
 		}
-		top.splice(0, top.length, ...structuredClone(initialIdeConfig.top))
-		left.splice(0, left.length, ...structuredClone(initialIdeConfig.left))
-		right.splice(0, right.length, ...structuredClone(initialIdeConfig.right))
-		bottom.splice(0, bottom.length, ...structuredClone(initialIdeConfig.bottom))
+		loadMode(activeMode)
 		demoState.lastAction = 'Layout reset'
-	}
-
-	const inspecting = $derived(palettes.inspecting)
-	const inspectingItem = $derived(
-		inspecting?.item as { tool?: string; editor?: string } | undefined
-	)
-	const inspectingTool = $derived(
-		inspectingItem?.tool ? demoPalette.tool(inspectingItem.tool) : undefined
-	)
-	const Configurator = $derived.by(() => {
-		if (!inspectingItem) return undefined
-		try {
-			return demoPalette.renderConfigurator(inspectingItem as never, inspectingTool as never, {
-				palette: demoPalette,
-				region: inspecting?.region
-			}) as unknown as Component<{ context: PaletteEditorContext }>
-		} catch {
-			return undefined
-		}
-	})
-	const configuratorContext = $derived.by(() => {
-		if (!inspectingItem || !Configurator) return undefined
-		try {
-			return demoPalette.resolveConfiguratorContext(
-				inspectingItem as never,
-				inspectingTool as never,
-				{ palette: demoPalette, region: inspecting?.region }
-			) as unknown as PaletteEditorContext
-		} catch {
-			return undefined
-		}
-	})
-	const inspectingDescriptor = $derived.by(() => {
-		if (!inspectingItem) return undefined
-		try {
-			const entry = palettes.inspecting
-			if (!entry) return undefined
-			// Locate the live toolbar/index so structural actions act on the
-			// real layout (not the singleton probe used for editorChoices).
-			// `palettes.inspecting` carries no toolbar/index; resolve by identity.
-			const borders = { top, left, right, bottom } as Record<string, unknown[]>
-			for (const candidateRegion of ['top', 'left', 'right', 'bottom'] as const) {
-				const candidateBorder = borders[candidateRegion] as
-					| { toolbar?: unknown; track?: unknown[]; trackIndex?: number }[][]
-					| undefined
-				if (!candidateBorder) continue
-				for (const track of candidateBorder) {
-					for (const slot of track as unknown as {
-						toolbar: unknown[]
-					}[]) {
-						const index = slot.toolbar.indexOf(entry.item as never)
-						if (index < 0) continue
-						return demoPalette.describeItemConfiguration(
-							{
-								item: entry.item as never,
-								toolbar: slot.toolbar as never,
-								index,
-								region: candidateRegion
-							},
-							{
-								axis:
-									candidateRegion === 'left' || candidateRegion === 'right'
-										? 'vertical'
-										: 'horizontal',
-								region: candidateRegion
-							}
-						)
-					}
-				}
-			}
-			return undefined
-		} catch {
-			return undefined
-		}
-	})
-	function moveInspectingItem(direction: 'forward' | 'backward') {
-		const descriptor = inspectingDescriptor
-		const entry = palettes.inspecting
-		if (!descriptor || !entry) return
-		const { toolbar, index } = descriptor.target as unknown as {
-			toolbar: unknown[]
-			index: number
-		}
-		const next = direction === 'forward' ? index + 1 : index - 1
-		if (next < 0 || next >= toolbar.length) return
-		const [item] = toolbar.splice(index, 1)
-		toolbar.splice(next, 0, item)
-		demoState.lastAction = `Item moved ${direction}`
-	}
-	function removeInspectingItem() {
-		const descriptor = inspectingDescriptor
-		const entry = palettes.inspecting
-		if (!descriptor || !entry) return
-		const { toolbar, index } = descriptor.target as unknown as {
-			toolbar: unknown[]
-			index: number
-		}
-		toolbar.splice(index, 1)
-		delete palettes.inspecting
-		demoState.lastAction = 'Item removed'
 	}
 </script>
 
 <main>
 	<div class="demo-bar">
 		<h1>Stellar Outpost — palette demo</h1>
-		<button
-			type="button"
-			data-testid="edit-toggle"
-			onclick={() => {
-				palettes.editing = palettes.editing === demoPalette ? undefined : demoPalette
-			}}
-		>
-			{palettes.editing === demoPalette ? 'Done' : 'Edit palette'}
-		</button>
+		<div class="demo-modes">
+			{#each demoConfigs as config (config.id)}
+				<button
+					type="button"
+					class={activeMode === config.id ? 'is-active' : undefined}
+					data-testid={`mode-${config.id}`}
+					aria-pressed={activeMode === config.id ? 'true' : 'false'}
+					title={config.description}
+					onclick={() => loadMode(config.id)}
+				>
+					{config.label}
+				</button>
+			{/each}
+		</div>
 		<button type="button" data-testid="save-layout" onclick={persistLayout}>Save layout</button>
-		<button type="button" data-testid="reset-layout" onclick={resetLayout}>Reset layout</button>
+		<button type="button" data-testid="reset-layout" onclick={resetLayout}>
+			Reset {demoConfigs.find((c) => c.id === activeMode)?.label ?? 'layout'}
+		</button>
 		{#if layoutRestored}
 			<span class="demo-state" data-testid="layout-restored">Layout restored from localStorage</span
 			>
@@ -246,10 +170,10 @@
 		<span class="demo-state" data-testid="last-action">Last action: {demoState.lastAction}</span>
 	</div>
 	<Ide palette={demoPalette} {top} {left} {right} {bottom}>
-		{#if consoleUi.open}
-			<ConsoleOverlay {top} />
+		{#if consoleState.open}
+			<Console palette={demoPalette as never} {top} {left} {right} {bottom} />
 		{/if}
-		<div class="demo-center" class:is-dimmed={consoleUi.open} data-testid="work-zone">
+		<div class="demo-center" class:is-dimmed={consoleState.open} data-testid="work-zone">
 			<div class="demo-hero">
 				<div>
 					<strong>Stellar Outpost</strong>
@@ -293,46 +217,7 @@
 					</div>
 				</div>
 			</div>
-			<p>Toggle edit mode, then click a toolbar item to configure it.</p>
-			{#if inspectingItem && Configurator && configuratorContext}
-				<div class="demo-inspector" data-testid="inspector">
-					<strong>Item configuration</strong>
-					{#if inspectingDescriptor}
-						<div class="demo-inspector-row">
-							<span class="demo-state-key">Shortcut</span>
-							<span class="demo-state-value" data-testid="inspector-shortcut"
-								>{inspectingDescriptor.bindings?.shortcut ?? '—'}</span
-							>
-						</div>
-						<div class="demo-inspector-actions">
-							<button
-								type="button"
-								data-testid="inspector-move-back"
-								disabled={!inspectingDescriptor.structure.moveBackward?.enabled}
-								onclick={() => moveInspectingItem('backward')}>← Move back</button
-							>
-							<button
-								type="button"
-								data-testid="inspector-move-forward"
-								disabled={!inspectingDescriptor.structure.moveForward?.enabled}
-								onclick={() => moveInspectingItem('forward')}>Move forward →</button
-							>
-							<button
-								type="button"
-								data-testid="inspector-remove"
-								disabled={!inspectingDescriptor.structure.removable}
-								onclick={removeInspectingItem}>Remove</button
-							>
-						</div>
-					{/if}
-					<Configurator context={configuratorContext} />
-				</div>
-			{:else if inspectingItem}
-				<div class="demo-inspector">
-					<strong>Item configuration</strong>
-					<p>No configurator for {inspectingItem.tool ?? inspectingItem.editor}.</p>
-				</div>
-			{/if}
+			<p>Open the console, then click a toolbar item to configure its presentation.</p>
 		</div>
 	</Ide>
 </main>
@@ -362,35 +247,38 @@
 		font-size: 1.1rem;
 		margin: 0;
 	}
+	.demo-modes {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.demo-modes button {
+		padding: 0.34rem 0.72rem;
+		border: 1px solid rgba(71, 85, 105, 0.9);
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.88);
+		color: #e2e8f0;
+		cursor: pointer;
+		font-size: 0.82rem;
+	}
+	.demo-modes button.is-active,
+	.demo-modes button[aria-pressed='true'] {
+		border-color: #60a5fa;
+		background: #1d4ed8;
+		color: #eff6ff;
+	}
+	:global(html[data-theme='light']) .demo-modes button {
+		border-color: rgba(148, 163, 184, 0.9);
+		background: #ffffff;
+		color: #0f172a;
+	}
 	.demo-center {
 		position: relative;
 		padding: 1rem;
 		display: grid;
 		gap: 1rem;
 		align-content: start;
-	}
-	.demo-inspector {
-		display: grid;
-		gap: 0.75rem;
-		padding: 1rem;
-		border: 1px solid rgba(71, 85, 105, 0.65);
-		border-radius: 12px;
-		max-width: 32rem;
-		background: rgba(15, 23, 42, 0.64);
-	}
-	:global(html[data-theme='light']) .demo-inspector {
-		border-color: #cbd5e1;
-		background: #ffffff;
-	}
-	.demo-inspector-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-	.demo-inspector-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
 	}
 	:global(.palette-ide-center) {
 		position: relative;

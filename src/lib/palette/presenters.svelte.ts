@@ -12,8 +12,10 @@
  * - `selectPresenter` (enum) → `{ hint, tone, icon, value, options, select }`
  * - `sliderPresenter` (number) → `{ label, icon, hint, tone, direction, region,
  *   min, max, step, value, set }`
- * - `commandBoxPresenter` (item) → `{ label, icon, hint, box }` (the headless
- *   `paletteCommandBoxModel` + its input/key handlers, so the head only binds)
+ * - `commandBoxPresenter` (item) → `{ title, icon, label, hint, model }` — a
+ *   real commands-combo-box (text input + results popup) running commands
+ *   inline on the toolbar. Call it once at component init, NOT inside `$derived`
+ *   (the returned `model` holds `$state` and must be created during init).
  * - `configuratorPresenter` → `{ label, icon, hint, tone, editor, editorChoices,
  *   setText, setTone, setEditor }` (generic configure panel; enum-subset fields
  *   stay in the demo `EnumSubsetConfigurator`, not the minimal head)
@@ -23,12 +25,9 @@
  * here (or in the tool itself); the head only calls the presenter callbacks.
  */
 import {
-	handlePaletteCommandBoxInputKeydown,
-	handlePaletteCommandChipKeydown,
 	type PaletteCommandBoxModel,
 	paletteCommandBoxModel,
 	paletteCommandEntries,
-	setPaletteCommandBoxInput,
 } from './command-box.svelte'
 import type {
 	PaletteEditorChoice,
@@ -294,63 +293,39 @@ export function sliderPresenter(
 	}
 }
 
-export type CommandBoxPresenter<TSchema extends PaletteSchema = PaletteSchema> = {
+export type CommandBoxPresenter = {
 	readonly title: string
 	readonly icon: string
-	readonly box: PaletteCommandBoxModel<TSchema>
-	readonly expanded: boolean
-	setFocused(focused: boolean): void
+	readonly label: string
+	readonly hint: string | undefined
+	readonly model: PaletteCommandBoxModel
 }
 
 /**
- * View-model for the command-box item: headless `paletteCommandBoxModel`
- * (entries built from the scope palette) + focus/expand state.
+ * View-model for the command-box item: a real commands-combo-box (text input +
+ * results popup) that runs commands inline on the toolbar. This is a **run**
+ * surface, independent of the console — it builds its own
+ * `paletteCommandBoxModel` from the palette resolved in `context.scope.palette`.
  *
- * Must be created during component init (same `$state` init-time constraint
- * as `paletteCommandBoxModel` itself) — call once at the top of the head
- * component script, then bind `box` + `expanded` in markup.
+ * IMPORTANT: create during component init only (the model holds `$state`); do
+ * not wrap this in `$derived`.
  */
-export function commandBoxPresenter<TSchema extends PaletteSchema = PaletteSchema>(options: {
-	context: PaletteEditorContext<undefined, PaletteToolbarItem, TSchema>
-	placeholder?: string
-}): CommandBoxPresenter<TSchema> {
-	const { context, placeholder = 'Command…' } = options
-	const meta = headMeta(context.item)
-	const scopePalette = context.scope.palette as
-		| {
-				tools: Record<string, never>
-				keys: { findByTool: (spec: string) => readonly string[] }
-		  }
-		| undefined
-	// Seeding from `context` once is deliberate; call during component init only.
-	// svelte-ignore state_referenced_locally
-	const box = paletteCommandBoxModel<TSchema>({
-		entries: scopePalette ? paletteCommandEntries({ palette: scopePalette as never }) : [],
-		placeholder,
+export function commandBoxPresenter(options: {
+	context: PaletteEditorContext<undefined, PaletteToolbarItem, PaletteSchema>
+}): CommandBoxPresenter {
+	const meta = headMeta(options.context.item)
+	const palette = options.context.scope.palette
+	const model = paletteCommandBoxModel({
+		entries: palette ? paletteCommandEntries({ palette: palette as never }) : [],
+		placeholder: 'Command…',
 	})
-	let focused = $state(false)
 	return {
-		title: headTooltip(context.item, meta.hint),
+		title: headTooltip(options.context.item, meta.hint),
 		icon: meta.icon ?? '⌘',
-		box,
-		get expanded() {
-			return (
-				focused ||
-				box.input.value.length > 0 ||
-				box.keywords.tokens.length > 0 ||
-				box.categories.active.length > 0
-			)
-		},
-		setFocused(value: boolean) {
-			focused = value
-		},
+		label: meta.label,
+		hint: meta.hint,
+		model: model as unknown as PaletteCommandBoxModel,
 	}
-}
-
-export {
-	handlePaletteCommandBoxInputKeydown,
-	handlePaletteCommandChipKeydown,
-	setPaletteCommandBoxInput,
 }
 
 export type ConfiguratorPresenter = {

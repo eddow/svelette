@@ -12,11 +12,11 @@ it only renders tool values and forwards user gestures to presenter callbacks.
   builds it via `palette.resolveEditorContext(item, tool, scope)` and renders
   `<Editor context={...} />`.
 - All reads/mutations go through a **presenter** from
-  `$lib/palette/presenters.svelte` (or `palette/index.svelte.ts` re-exports).
+  `$lib/palette/presenters.svelte` (re-exported by `core.svelte.ts` / `edition.svelte.ts`).
   Never write `tool.value = …` or `tool.run()` in `.svelte` — call the presenter
   callback (`view.select(next)`, `view.set(n)`, `view.toggle()`, `view.run()`).
-- No command-box entry builders in heads (`paletteCommandEntries`,
-  `paletteAddItemEntries`, …). `commandBoxPresenter` builds the model for you.
+- Do not call `paletteCommandEntries` / `paletteAddItemEntries` directly in `.svelte`;
+  use `commandBoxPresenter` (which wires `paletteCommandEntries` from `context.scope.palette`).
 - Configurators receive the same `context` shape with an augmented scope
   (`editorChoices` injected). Use `configuratorPresenter` for the generic panel;
   read enum-subset fields via your own presenter or `headMeta`.
@@ -31,7 +31,7 @@ Presenter cheat-sheet:
 | boolean | `togglePresenter(context)` | `{ icon, title, tone, pressed, toggle() }` |
 | enum | `selectPresenter(context)` | `{ title, tone, icon, value, options[{value,text}], select }` |
 | number | `sliderPresenter(context)` | `{ title, tone, icon, direction, region, min, max, step, value, set }` |
-| item | `commandBoxPresenter({ context, placeholder? })` | `{ title, icon, box, expanded, setFocused }` |
+| item | `commandBoxPresenter({ context })` | `{ title, icon, label, hint, model }` — `model` is a `paletteCommandBoxModel` (combobox) |
 | any | `configuratorPresenter(context)` | `{ label, icon, hint, tone, editor, editorChoices, setText, setTone, setEditor }` |
 
 Helpers: `headMeta(item)` (config defaults), `headTooltip(item, suffix)`,
@@ -41,7 +41,7 @@ Helpers: `headMeta(item)` (config defaults), `headTooltip(item, suffix)`,
 
 ```svelte
 <script lang="ts">
-	import { togglePresenter } from '$lib/palette/index.svelte'
+	import { togglePresenter } from '$lib/palette/core.svelte'
 	import type {
 		PaletteEditorContext,
 		PaletteSchema,
@@ -73,38 +73,41 @@ Key points: `$derived(togglePresenter(context))` keeps `pressed`/`icon` reactive
 never depend on the head theme's `palette-default-*` class names (head-owned,
 not part of the public contract).
 
-## 3. Command-box editor (init-time!)
+## 3. Command-box combobox editor
 
-`commandBoxPresenter` creates `$state` — call it **once during component init**,
-never in a handler:
+`commandBoxPresenter` returns a real commands-combo-box: a text input + results
+popup that runs commands inline on the toolbar. It builds its own
+`paletteCommandBoxModel` from `context.scope.palette` — call it **once at
+component init** (not inside `$derived`; the model holds `$state`):
 
 ```svelte
 <script lang="ts">
-	import {
-		commandBoxPresenter,
-		handlePresenterCommandBoxInputKeydown,
-		handlePresenterCommandChipKeydown,
-		setPresenterCommandBoxInput
-	} from '$lib/palette/index.svelte'
+	import { commandBoxPresenter } from '$lib/palette/core.svelte'
 
 	let { context }: Props = $props()
-	// svelte-ignore state_referenced_locally
-	const view = commandBoxPresenter({ context, placeholder: 'Search…' })
-	const box = view.box
-	const expanded = $derived(view.expanded)
+	const view = commandBoxPresenter({ context })
+	const model = view.model
 </script>
+
+<input
+	value={model.input.value}
+	placeholder={model.input.placeholder}
+	oninput={(e) => setPaletteCommandBoxInput(model, e)}
+/>
+{#each model.results as entry (entry.id)}
+	<button onclick={() => model.execute(entry.id)}>{entry.label}</button>
+{/each}
 ```
 
-Then bind `box.input.value`, `box.results`, `box.selection`, `box.categories`,
-`box.keywords`, `box.suggestions` in markup; focus/blur go through
-`view.setFocused(true/false)`. Copy `head/editors/CommandBoxEditor.svelte` as
-the reference layout.
+Copy `head/editors/CommandBoxEditor.svelte` as the reference layout (chips,
+suggestions, keyboard handling via `handlePaletteCommandBoxInputKeydown` /
+`handlePaletteCommandChipKeydown`).
 
 ## 4. Configurator
 
 ```svelte
 <script lang="ts">
-	import { configuratorPresenter } from '$lib/palette/index.svelte'
+	import { configuratorPresenter } from '$lib/palette/core.svelte'
 	let { context }: Props = $props()
 	const view = $derived(configuratorPresenter(context))
 </script>
@@ -174,7 +177,7 @@ fallback (wrong axis → first compact fallback).
 
 - [ ] One `context` prop, typed per family (`PaletteToolBool`, `PaletteToolEnum<string>`, …).
 - [ ] All tool/config access through a core presenter; no direct mutation in `.svelte`.
-- [ ] `commandBoxPresenter` called once at init (with `svelte-ignore state_referenced_locally`).
+- [ ] `commandBoxPresenter` for the `commandBox` item (a real combobox, created once at init).
 - [ ] Drawer reused from core, not reimplemented.
 - [ ] Registered per family with `BaseConfigurator` (or custom) + footprint flags.
 - [ ] `check` / `lint` / `test` / `build` green; demo renders the new variant in one

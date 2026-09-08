@@ -25,6 +25,10 @@ lacks — a play/rating row). Together they prove both replacement and extension
 
 Notes:
 
+- The `commandBox` editor is a real **commands-combo-box** (text input + results popup,
+  Ctrl-Shift-P style): it runs commands inline on the toolbar. Running commands does *not*
+  require the console; the console is a separate modal for edition (and command-first fallback).
+
 - `segmented` is the "radio-button" idiom: joined buttons where the selected one
   reads as pushed-in. `select` is the compact dropdown. Both are enum editors.
 - `stepper` is a ± button pair for integer/stepped values; `slider` is the
@@ -40,7 +44,7 @@ Plus `BaseConfigurator.svelte` (generic label/icon/hint/editor/tone panel via
 ```ts
 // palette.ts
 import { headEditors } from '$lib/head/registry'
-import { Palette } from '$lib/palette/index.svelte'
+import { Palette } from '$lib/palette/edition.svelte'
 
 export const palette = new Palette({
 	tools: {
@@ -146,6 +150,14 @@ component contract (bind a core presenter, never mutate tools directly).
 
 Heads read per-item `config`: `icon`, `label`, `hint`, `tone` (`neutral`/`accent`),
 plus enum-subset `values`/`keywords`/`choiceDisplay` (honored by `selectPresenter`).
-The inspector (`BaseConfigurator` via `renderConfigurator` +
-`resolveConfiguratorContext`) edits these live, including the editor-variant
-chooser (`editorChoices` from `describeItemConfiguration`).
+The console's *Details* panel renders the presentation-only inspector
+(`BaseConfigurator` via `renderConfigurator` + `resolveConfiguratorContext`),
+which edits these live, including the editor-variant chooser (`editorChoices`
+from `describeItemConfiguration`).
+
+## Read-only vs editable imports
+
+- Read-only (predefined layout, `editable: false`): import from
+  `$lib/palette/core.svelte` — display + run, no mutation surface.
+- Editable: import from `$lib/palette/edition.svelte` (re-exports `core`).
+- `$lib/palette/edition.svelte` re-exports `core`, so a single import suffices.

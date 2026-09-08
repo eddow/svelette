@@ -24,30 +24,41 @@ Scratch files go in `sandbox/` (git-ignored), never `/tmp`.
 ## Demo tour (`src/routes/+page.svelte`)
 
 The demo is a **Stellar Outpost** space-colony sim (`src/lib/demo/palette.svelte.ts`)
-rendering an `Ide` with all four borders plus center content:
+rendering an `Ide` with all four borders plus center content. It ships **three
+configurations** (`demoConfigs`), each with its own reset button in the demo bar:
 
-- **Top**: command box, icon-only edit-mode toggle, lockdown button, life-support
-  + shields toggles, threat-level segmented
+- **R/W + command box** — read-write; a `commandBox` combobox on the top toolbar
+  runs commands inline, and the console opens in **edit mode**.
+- **R/W command-first** — read-write; no combobox, so the console opens **command-first**
+  with a square edit-icon button to enter/leave edit mode.
+- **R-O + command box** — read-only (`editable: false`); the combobox runs commands but
+  the layout is not editable.
+
+- **Top**: command box, lockdown button, life-support + shields toggles,
+  threat-level segmented
 - **Left**: sim-speed slider, atmosphere select, power-focus segmented, nested
   drawer (atmosphere select + sim-speed stepper)
 - **Right**: tax-rate slider, solar stepper, satisfaction stars
-- **Bottom**: developer terminal, save, reset, hyper-tick toggle
+- **Bottom**: developer console, save, reset, hyper-tick toggle
 
 The work-zone shows every colony variable as pills plus a colony-status panel
 and an `mm:ss` elapsed-since-launch chip. Opening the console dims + disables
-the work-zone (quake-style modal).
+the work-zone (quake-style modal). In edit mode, toolbar items are **inert**
+(`paletteItemShield`): run buttons/toggles/comboboxes are moved/removed or
+selected for edition, never clicked.
 
 Interactions to try:
 
-1. **Edit toolbars** toggle (top bar, ✏️) → hover a toolbar (blue chrome),
-   `pointerdown` on an item opens the inspector (shortcut, move back/forward,
-   remove, configurator).
-2. **Command box**: type `Set Threat Level to Red`, run it — the `⚠️` pill updates.
-3. **Drawers**: `More` (left) opens a horizontal popup (axis inversion).
-4. **Console**: `` ` `` key or `Terminal` button opens the overlay (toggles — the
-   same shortcut closes it); the checkbutton swaps *Command* ↔ *Toolbar edition*
-   (add-to-toolbar + catalogue + parking).
-5. **Save/Reset layout**: round-trips through `localStorage` (`svelette-demo-layout-v1`).
+1. **Command box** (top bar, ⌘) → a real combobox: type to search, run a command
+   inline (Ctrl-Shift-P style). In "R/W + command box" mode the console opens in
+   edit mode; hover a toolbar (blue chrome), `pointerdown` on an item highlights
+   it and shows its presentation-only configurator in the console's *Details*
+   panel; selecting an add entry shows its variants in the same place.
+2. **Drawers**: `More` (left) opens a horizontal popup (axis inversion).
+3. **Console**: `` ` `` key or `Terminal` button opens the overlay (toggles — the
+   same shortcut closes it); parking + add-to-toolbar live in the console.
+4. **Modes / reset**: the demo bar loads each configuration and per-mode reset
+   round-trips through `localStorage` (`svelette-demo-layout-v1`).
 
 Theme control: the `theme` tool (`light`/`dark`/`system`) resolves via
 `prefers-color-scheme` and syncs `.palette-default-theme-light` + `data-theme` +
@@ -57,7 +68,7 @@ Theme control: the `theme` tool (`light`/`dark`/`system`) resolves via
 
 ```ts
 import { headEditors } from '$lib/head/registry'
-import { Palette } from '$lib/palette/index.svelte'
+import { Palette } from '$lib/palette/core.svelte'
 
 const palette = new Palette({
 	tools: {

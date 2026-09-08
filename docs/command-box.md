@@ -1,17 +1,16 @@
 # Command box
 
-Builders and model live in `src/lib/palette/command-box.svelte.ts`. Demo editors:
-`src/lib/demo/editors/CommandBoxEditor.svelte`. Console overlay:
-`src/lib/demo/ConsoleOverlay.svelte` + `src/lib/demo/console.svelte.ts`.
+Builders and model live in `src/lib/palette/command-box.svelte.ts`. Console (headless core +
+head modal): `src/lib/palette/console.svelte.ts` + `src/lib/head/Console.svelte`.
 
 ## Entry builders
 
 | Builder                  | Contents                                                                 |
 | ------------------------ | ------------------------------------------------------------------------ |
-| `paletteCommandEntries`  | Executable commands: run tools, boolean on/off, enum per-value setters, number inc/dec. `mode: 'catalog'` keeps entries enabled for search/drag. `excludeTools` omits meta-tools (demo excludes `terminal` inside the console). |
+| `paletteCommandEntries`  | Executable commands: run tools, boolean on/off, enum per-value setters, number inc/dec. `mode: 'catalog'` keeps entries enabled for search/drag. `excludeTools` omits meta-tools (the console excludes `console` inside the console). |
 | `paletteAddItemEntries`  | Add sources: one per editable tool (enum tools with `commandBoxEnumCommands !== 'per-value'` are skipped) + one per `editors.item` entry. Runnable tools are excluded (they already have command entries). |
 | `paletteDerivedVariants` | Concrete insertable variants for an add source: `tool` (toolbar command), `set` (boolean/enum/number control — value chosen on bar/inspector), `action`, `item` (editor-only). |
-| `paletteCatalogEntries`  | Full catalogue: `mode: 'catalog'` commands + flattened add variants (`add:<variant-id>`), sorted by label. Each carries `catalogDrag` (`{ kind: 'spec' }` or `{ kind: 'variant' }`). |
+| `paletteCatalogEntries`  | Full catalogue (headless helper, not rendered by the console): `mode: 'catalog'` commands + flattened add variants (`add:<variant-id>`), sorted by label. Each carries `catalogDrag` (`{ kind: 'spec' }` or `{ kind: 'variant' }`). |
 | `paletteEnumSubsetValues`| Filter enum values by keywords (powers `EnumSubsetConfigurator` + add-flow keyword filters). |
 
 Labels are humanized (`gameSpeed` → `Game Speed`); keywords collect tool/value/
@@ -52,18 +51,34 @@ Helpers: `setPaletteCommandBoxInput(box, event)`,
 shorthand properties — shorthand captures the initial value and breaks
 reactivity (`state_referenced_locally`).
 
+## Command box (combobox) vs console
+
+The toolbar `commandBox` editor is a real **commands-combo-box** (text input + results popup,
+Ctrl-Shift-P style) built on `paletteCommandBoxModel` + `paletteCommandEntries` — a **run**
+surface that executes commands inline on the toolbar. It is independent of the console.
+
+The **console** is a separate modal (opened by the `console` run tool / key). Its mode depends
+on whether a `commandBox` combobox is on the toolbar: if so it opens in **edit mode** (running
+happens inline); if not it opens **command-first** (its own run box) and, when the palette is
+R/W, offers a **square edit-icon button** (`console-mode-toggle`, `aria-pressed`, `✎`/`✓`) on
+the left of the command box to enter/leave edit mode. Closing the console always stops edition.
+
 ## Add-to-toolbar flow (demo)
 
-Edit mode swaps the console box to `paletteAddItemEntries` with
-`enterAction: 'select'`. Selecting an entry expands `paletteDerivedVariants`
-into variant cards (boolean/number/enum value inputs, enum allowed-values +
-keyword filters); the chosen variant builds a live `Toolbar` preview. Catalogue
-rows (`paletteCatalogEntries`) are `draggable`; both paths start native HTML5
-drags (`PALETTE_CATALOG_DRAG_MIME` on `dataTransfer`,
-`beginPaletteCatalogInsertDrag` + `notifyPaletteCatalogNativeDragStarted` on
-`dragstart`); drops land in the toolbar/track/stack zones. `Parking` (seeded
-from the live top border minus the command box) offers remove/restore while
-editing.
+Edit mode swaps the console box to `paletteAddItemEntries` with `enterAction: 'select'` — a
+**single** list: the add-box results (`console-results`) are the only draggable surface;
+selecting one reveals the *Details* panel (`console-details-panel`) with its variants. Run mode
+shows only the run-box results. The console is edit-capable only when the palette is
+R/W (`editable !== false`): the edit button renders only then, and closing
+the console always clears the `palettes.editing` mirror (plus `palettes.inspecting`),
+so toolbars never stay inert after an edit-mode close. Selecting an entry expands
+`paletteDerivedVariants` into variant cards (boolean/number/enum value inputs, enum
+allowed-values + keyword filters). The add-box results (`console-results`, seeded from
+`paletteAddItemEntries`) are `draggable`; drags start native HTML5
+(`PALETTE_CATALOG_DRAG_MIME` on `dataTransfer`, `beginPaletteCatalogInsertDrag` +
+`notifyPaletteCatalogNativeDragStarted` on `dragstart`); drops land in the toolbar/track/stack
+zones. `Parking` (seeded from the live top border minus the command box) offers remove/restore
+while editing.
 
 Payloads: `serializePaletteCatalogDragPayload` / `parsePaletteCatalogDragPayload`
 / `paletteToolbarItemFromCatalogPayload` (spec → default editor variant +

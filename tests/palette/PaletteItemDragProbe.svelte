@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { PaletteItemDragTarget } from '$lib/palette/index.svelte'
-	import { paletteItemDrag } from '$lib/palette/index.svelte'
+	import type { PaletteItemDragTarget } from '$lib/palette/edition.svelte'
+	import { paletteItemDrag } from '$lib/palette/edition.svelte'
 
 	let { target }: { target: PaletteItemDragTarget } = $props()
 </script>

@@ -1,68 +1,33 @@
 # Console & Command-box Architecture — Analysis & Plan
 
-> Status: **decisions resolved, documentation done — awaiting implementation**. Input: a
-> non-expert spec (see `demo.md`), so every claim below is double-checked against the actual
-> code before being treated as fact. §6–§7 are the locked decisions + verified edit-mode
-> semantics; §5 is the phased implementation to execute.
+> Status: implementation complete; permanent details live in `docs/`
+> (`architecture.md`, `core-concepts.md`, `command-box.md`, `layout-and-drag.md`,
+> `using-the-default-head.md`, `creating-a-head.md`, `testing.md`).
 
-## 1. Current state (verified against source)
+## Completed (record for history — all shipped, 2026-09-08)
 
-There are **two** command-box entry points and **two** edit affordances today, and they are
-not the same concept:
+- Restored the toolbar `commandBox` as a real commands-combo-box (text input + results
+  combo popup, Ctrl-Shift-P style) — `CommandBoxEditor.svelte` builds its own
+  `paletteCommandBoxModel` via `commandBoxPresenter`; `commandBoxLauncherPresenter` removed.
+- Console edit control is a **pressable square icon button** (`console-mode-toggle`,
+  `aria-pressed`, `✎`/`✓`) on the left of the console command box (shown only when R/W and
+  no combobox is displayed).
+- Single drag surface: the add-box results list (`console-results`); removed the scoped
+  `console-catalogue` re-list and the details-panel `<Toolbar>` drag preview.
+- Console **run-mode** state (`consoleState`, `consoleTool`, `openConsole`/`closeConsole`/
+  `toggleConsole`) moved into `core.svelte` — read-only palettes can open a command console;
+  only edition state (`resetConsoleAddState`, `popupAddList`) stays in `edition`.
+- Demo modes: `demoConfigs` (`rw-combobox`, `rw-command-first`, `ro-combobox`) with per-mode
+  reset buttons; `demoLayoutFor(id)` flips `demoEditable` reactively.
+- Edit-mode inert fix: `paletteItemShield` gained an `update()` so `element.inert` flips in
+  edit mode (the combobox and every toolbar editor is inactive/editable-only while editing).
 
-| Surface | File | Role | Edits? |
-| --- | --- | --- | --- |
-| Toolbar command box | `head/editors/CommandBoxEditor.svelte` + `commandBoxPresenter` | `item` editor variant (`editor: 'commandBox'`). Run-only (`paletteCommandEntries`). | ❌ never |
-| Console overlay | `demo/ConsoleOverlay.svelte` + `demo/console.svelte.ts` | Modal opened by the `terminal` run tool. Hosts a **run** box *and* an **add-to-toolbar** box (swaps on `palettes.editing`), catalogue, parking. | ✅ only here |
-| Edit toggle | `editToolbars` boolean tool, `editor: 'toggle'` in the top border | Toggles `palettes.editing`. | — |
-| Edit button | `+page.svelte` `Edit palette` / `Done` button | Also toggles `palettes.editing`. | — |
+## 3. Decision B — One command-box role, two entry modes (SUPERSEDED 2026-09-08)
 
-### The problems the user is pointing at
-
-1. **"Edition should be only in the console"** — but the edit affordance lives in *three* places
-   (toolbar `editToolbars` toggle, the page-level button, and the console's own mode checkbox).
-   `ConsoleOverlay` even renders its own `console-mode-toggle` checkbox that flips
-   `palettes.editing` — so edition state is reachable from everywhere and the "single source of
-   truth for editing" is unclear.
-
-2. **"The edit button is not a button in edit mode"** — `editToolbars` is a **boolean** tool
-   rendered as a `toggle`. When editing is active it reads "pushed in" (pressed state), not a
-   button you'd click to leave. A boolean toggle is the wrong widget for a mode switch that
-   should read as "Edit" / "Done".
-
-3. **"The command cannot be in edit and used mode"** — a single `commandBox` instance is
-   *either* a run box (toolbar) *or* an add box (console, in edit mode). The demo papered over
-   this by instantiating **two** boxes and swapping them with `activeBox = $derived(isEditing ?
-   popupAddCommandBox : popupCommandBox)`. That is exactly the "can't be in both" tension: the
-   toolbar box can never edit, and the console box has to rebuild its model on mode change.
-
-## 2. Decision A — The console is a first-class, core-owned concept
-
-The console should **stop living in `demo/`** and become a core concept with a head face —
-mirroring the existing `core (headless) ↔ head (markup+CSS)` split already used for every
-editor.
-
-- **Core** (`src/lib/palette/console.svelte.ts`): headless console state + model —
-  `open`/`close`/`toggle`, the active mode (`run` | `edit`), the command-entry sets to feed
-  (`run` entries vs `add`/`catalog` entries), and the parking seed. **No markup, no CSS.**
-- **Head** (`src/lib/head/Console.svelte`): the **fixed-size modal masking the working zone**
-  (backdrop + centred panel), wiring the core model to the existing command-box presenters,
-  catalogue rows, add-panel, and `Parking`. The head owns the "modal thingy" styling (size,
-  mask, graying), exactly as the user requested ("defined in the core but use extensively the
-  head — even for the modal").
-
-Concretely this is a **rename-and-elevate** of `demo/ConsoleOverlay.svelte` +
-`demo/console.svelte.ts` into `palette/` (headless) + `head/` (component), with the demo
-providing only the *tools/keys/theme* (Stellar Outpost) on top — not the console itself.
-
-### What the console always contains
-
-- **Run mode:** command box (search + execute runnable commands).
-- **Edit mode:** command box swapped to add-to-toolbar + catalogue (draggable) + `Parking`
-  (remove/restore) + per-item configurator/inspector. This is the **only** place edition
-  happens.
-
-## 3. Decision B — One command-box role, two entry modes
+> **Superseded** — see §8. The "command box becomes an edit-only launcher" move was wrong: it
+> deleted the real commands-combo-box widget. Reverted: the command box is again an inline
+> combobox (run surface); the console is a separate modal whose mode depends on whether the
+> combobox is present. Kept below for history.
 
 The command box stops being "a run box that also happens to be near edit". Instead:
 
@@ -78,7 +43,7 @@ instance. The `editToolbars` boolean tool and the page-level `Edit palette` butt
 in favour of this unified affordance (see §5). `editToolbars` currently proxies
 `palettes.editing` — that proxy moves into the console's edit checkbutton / launcher.
 
-## 4. Decision C — Split the palette into `core` and `edition`
+## 4. Decision C — core/edition export split (implemented)
 
 **Recommendation: yes, split — as an export surface, not a file reshuffle.**
 
@@ -108,46 +73,28 @@ read-only placement with a smaller import surface") is real and already *half-su
   (`edition → core`); a compile-time guarantee that a "read-only palette" can't reach mutation
   APIs; matches the existing `core↔head` mental model (a third axis `edition`).
 - **Con:** two entry points to document/version; some types straddle the line (e.g.
-  `Palette.editing` is read by both the console and layout components); a one-time churn across
-  `index.svelte.ts` + all `demo/`/`head/` imports.
+  `Palette.editing` is read by both the console and layout components).
 - **Non-goal:** we do **not** split into separate packages (`@svelette/palette-core` vs
   `-edition`) yet — one package, two barrel exports (`$lib/palette/core` and
-  `$lib/palette/edition`, with `$lib/palette` re-exporting both for back-compat). Package split
-  can follow later if a consumer actually needs it.
+  `$lib/palette/edition`). No `index.svelte.ts` back-compat barrel (removed, no-backcompat
+  policy). Package split can follow later if a consumer actually needs it.
 
 The `editable !== false` flag already gates behaviour at runtime; the split gates it at
 **import/compile** time, which is strictly stronger and is the point of the exercise.
 
-## 5. Implementation plan (phased)
+## 5. Implementation status (all DONE — kept as a one-line record)
 
-### Phase 1 — Elevate the console to core + head (Decision A)
-1. Move `demo/console.svelte.ts` → `palette/console.svelte.ts` (drop demo-only bits; expose
-   `consoleState`/`openConsole`/`closeConsole`/`toggleConsole` + `mode: 'run' | 'edit'`).
-2. Move `demo/ConsoleOverlay.svelte` → `head/Console.svelte`, restyled as a **fixed-size modal
-   masking the work-zone** (backdrop + dimming, centred fixed panel). Demo keeps only its
-   `+page.svelte` `<Console />` slot + `is-dimmed` wiring (or the head owns the mask).
-3. `terminal` run tool now just calls `toggleConsole()` (already does).
+Phases 0–3 + 1b/2b/2c done: console elevated to core+head (`palette/console.svelte.ts` +
+`head/Console.svelte`, `consoleTool` bound to `` ` ``); keys suppressed in edit mode; drawer
+cycle broken (`drawer-state.svelte.ts`); commandBox restored as a real combobox
+(`commandBoxPresenter` — the Decision-B launcher conversion was **reverted**, see §8) +
+pressable edit button (`console-mode-toggle`, `aria-pressed`); presentation-only inspector
+(`data-inspected` highlight, single `console-details-panel`); auto-detect edit-only vs
+command-first (`hasCommandBoxTool`) + CSS fix; single drag surface (add-box `console-results`,
+no `console-catalogue` re-list or details-panel drag preview); console run-mode moved into
+`core.svelte` (R-O palettes can open a command console). Details in `docs/`; history in git.
 
-### Phase 2 — Unify the command-box role (Decision B)
-4. Change the `item` `commandBox` editor from a run box to an **edit-only launcher button**:
-   `CommandBoxEditor.svelte` → a button whose click opens the console in edit mode. (The
-   `commandBoxPresenter` run-model path moves to the console's run mode.)
-5. Add the **edit checkbutton** to the console for the "no toolbar command box" case (pushed =
-   editing). Remove the old `console-mode-toggle` in favour of this (or the launcher).
-6. Delete `editToolbars` tool + the page-level `Edit palette` button; editing is entered/exited
-   only through the console affordances. Keep `palettes.editing` as the single source of truth.
-
-### Phase 3 — core/edition export split (Decision C)
-7. Introduce `palette/core.ts` and `palette/edition.ts` barrels; classify every current
-   `index.svelte.ts` export (§4). Keep `palette/index.svelte.ts` re-exporting both (back-compat).
-8. Rewire `head/` and `demo/` imports to the tighter surface (`demo` imports `edition` +
-   `core`; `head` imports `core` + reads `edition` state). Add a lint/CI guard (no `edition`
-   import from `head` components; `core` imports nothing from `edition`).
-9. Add a read-only demo/smoke (a palette with `editable: false` importing only `core`) to prove
-   the smaller surface; update `docs/` (`core-concepts.md`, `command-box.md`, new
-   `console.md`) and delete the completed items from this file per the repo protocol.
-
-## 6. Resolved decisions (user, 2026-09-06)
+## 6. Resolved decisions (user, 2026-09-06) — kept (not in `docs/`)
 
 - **Modal shape:** a literal **fixed rem/pixel box**, centred over the work-zone.
 - **Mask:** **dimmed-but-visible** (keep the current `is-dimmed` behaviour — content stays
@@ -173,7 +120,7 @@ The `editable !== false` flag already gates behaviour at runtime; the split gate
   custom head may anchor it top/bottom/side. Same split as every editor: core = state + model,
   head = markup + CSS + placement.
 
-### Correction — "tools don't run in edit mode" is *already implemented*
+### Correction — "tools don't run in edit mode" is *already implemented* (kept — retraction not in `docs/`)
 
 The earlier wording ("tools don't run while the console is open; add a `paletteRoot`
 short-circuit + `can: false`") is **wrong** and is retracted. The correct mechanism is
@@ -194,23 +141,48 @@ the console's edit mode (which just sets `palettes.editing`). **No new gating is
 this behaviour. The only genuinely new runtime pieces are: (a) the `console` run tool → headless
 `toggleConsole()`, and (b) the head modal itself.
 
-**Open question (keyboard, not pointer):** `paletteRoot`'s `keydown` handler currently runs
-tools *without* checking `palette.editing`. So in edit mode a *click* on a run button is inert,
-but a bound *key* (`E` → `emergencyProtocol`) still runs. Decide later whether key bindings
-should also be suppressed while `editing` — flagged, not part of this phase.
+**Resolved (2026-09-06):** no tool key bindings fire while `palette.editing` — suppressed in
+`paletteRoot`'s `keydown` handler (early `if (palette.editing) return`). Rationale: shortcuts
+will become editable by pressing them, so the keys must be free while editing. This mirrors the
+pointer side (`inert` shield). **Done** + locked by `tests/palette/components.test.ts`
+("suppresses tool shortcuts while editing").
 
-## 7. Edit-mode interaction semantics (verified)
+## 7. Edition management — resolved rules (2026-09-08, corrected)
 
-Reference: `src/lib/palette/components/Toolbar.svelte`,
-`src/lib/palette/layout.svelte.ts` (`paletteItemShield`, `paletteItemDrag`).
+The console's edition lifecycle follows two rules. R-O vs R/W is the same distinction
+`editable: false` already encodes. **Read-only palettes CAN open a command console**: the
+console's run-mode surface (`consoleState`, `consoleTool`, `openConsole`/`closeConsole`/
+`toggleConsole`) lives in `core.svelte`; only the edition state (`resetConsoleAddState`,
+`popupAddList`) lives in `edition.svelte`.
 
-| While `palette.editing` | Behaviour | Mechanism |
-| --- | --- | --- |
-| Click a run button / toggle / checkbox | **Nothing** — no run, no toggle, no check | `paletteItemShield` → `element.inert = true` on `.toolbar-item-content` |
-| `pointerdown` on an item | Item is **selected for edition** (inspector) and begins a move | `.toolbar-item-guard` overlay + `paletteItemDrag` (sets `palettes.inspecting`, starts drag session) |
-| Drag (≥4px) | Item **moves** across borders/tracks/toolbars | `startPaletteToolbarDragSession` → `paletteToolbarDragApplyMove` |
-| Click without drag | Item restored at origin, inspector open | `onClick` splice-back + `inspecting` |
-| Catalogue / add / parking | Enabled (drag into toolbars, remove/restore) | `paletteCatalogEntries`, `bindPaletteCatalogDrop`, `Parking` |
+1. **`commandBox` (combobox) in the tools → the console always opens in edit mode.** Running
+   already happens inline in the combobox, so the modal is for edition only — no edit button.
+   (`hasCommandBoxTool` sets `editOnly`; add box active.)
+2. **No `commandBox` item → command-first by default.** The console opens in `run` mode (`` ` ``
+   → `toggleConsole()` opens run; the same press toggles it closed). If the palette is **R/W**
+   (`editable !== false`), the console renders a pressable **square icon edit button**
+   (`console-mode-toggle`, `aria-pressed`, `✎`/`✓`) on the left of the command box to
+   enter/leave edit mode; a read-only palette gets no edit button.
 
-The console's **edit** mode sets `palettes.editing` and thus inherits all of this for free;
-its **run** mode is where the command box actually *executes* runnable commands.
+**Closing the console always stops edition.** `close()` (and the backdrop/`closeConsole` paths)
+explicitly clear the `palettes.editing` mirror and `palettes.inspecting`, so the toolbars never
+stay inert after the console closes while editing. Documented in `docs/` (`architecture.md`
+console bullet, `command-box.md` add-flow intro).
+
+## 8. Corrections after deep review (2026-09-08) — Decision B reverted
+
+The user's review surfaced four defects, all rooted in Decision B (§3) over-applying "command
+box → launcher". **All fixed (see "Completed" above):**
+
+1. **Restored the command box as a real combobox.** `CommandBoxEditor.svelte` was a bare
+   `command-launcher` button; it is again a text-input + results combo popup built on
+   `paletteCommandBoxModel` + `paletteCommandEntries` via `commandBoxPresenter`.
+   `commandBoxLauncherPresenter` removed. The demo's two duplicated console-open buttons
+   ("Command" launcher + "Terminal") are resolved: "Command" is now a combobox (run surface),
+   "Terminal" is the `console` run tool that opens the modal.
+2. **Edit control is a pressable square icon button** (`aria-pressed`, `✎`/`✓`) on the left of
+   the console command box, not a checkbox.
+3. **Single drag surface** = the add-box results list (`console-results`); removed the scoped
+   `console-catalogue` re-list and the details-panel `<Toolbar>` drag preview.
+4. **Command mode reachable by default** when no combobox is present (the `editOnly` flag only
+   sets the *default* mode, it no longer collapses run/edit into one modal).

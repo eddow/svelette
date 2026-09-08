@@ -15,21 +15,15 @@ async function openConsole(page: import('@playwright/test').Page) {
 	await expect(page.getByTestId('work-zone')).toHaveClass(/is-dimmed/)
 }
 
-test('console opens via backtick and executes a state command', async ({ page }) => {
+test('console opens via backtick in edit mode (commandBox is displayed)', async ({ page }) => {
 	// `paletteRoot` listens on the Ide root (tabindex=0), so focus it first —
 	// a bare `press('`')` on body never reaches the palette keydown handler.
+	// Since a `commandBox` tool is displayed, the console is edit-only: the
+	// backtick opens it in edit mode (add box), not run mode.
 	await page.locator('.palette-ide').first().click()
 	await page.keyboard.press('`')
 	await expect(page.getByTestId('console-overlay')).toBeVisible()
-	const input = page.getByTestId('console-input')
-	await input.fill('Set Threat Level to Red')
-	const result = page.getByTestId('console-results').locator('.palette-default-command-result', {
-		hasText: 'Set Threat Level to Red',
-	})
-	await expect(result.first()).toBeVisible()
-	await result.first().click()
-	await expect(page.getByTestId('console-overlay')).toHaveCount(0)
-	await expect(page.getByText('⚠️ red').first()).toBeVisible()
+	await expect(page.getByTestId('console-input')).toHaveAttribute('placeholder', 'Add to toolbar…')
 })
 
 test('console opens via Terminal button and closes on Escape', async ({ page }) => {
@@ -38,23 +32,56 @@ test('console opens via Terminal button and closes on Escape', async ({ page }) 
 	await expect(page.getByTestId('console-overlay')).toHaveCount(0)
 })
 
-test('checkbutton switches command ↔ add-to-toolbar modes', async ({ page }) => {
+test('command-first mode: no combobox → console command-first + edit button', async ({ page }) => {
+	// Load the command-first configuration (no commandBox combobox), then open
+	// the console via the Terminal button. It should open in run mode with a
+	// square edit-icon button (R/W palette), not in edit mode.
+	await page.getByTestId('mode-rw-command-first').click()
+	await expect(page.getByTestId('command-box-combobox')).toHaveCount(0)
 	await openConsole(page)
-	const toggle = page.getByTestId('console-mode-toggle')
-	const input = page.getByTestId('console-input')
-	// Command mode by default.
-	await expect(input).toHaveAttribute('placeholder', 'Command…')
-	await toggle.check()
-	await expect(input).toHaveAttribute('placeholder', 'Add to toolbar…')
-	await expect(page.getByTestId('console-catalogue')).toBeVisible()
+	await expect(page.getByTestId('console-mode-toggle')).toBeVisible()
+	await expect(page.getByTestId('console-input')).toHaveAttribute('placeholder', 'Command…')
+	// Toggling the edit button enters edit mode (add box active).
+	await page.getByTestId('console-mode-toggle').click()
+	await expect(page.getByTestId('console-input')).toHaveAttribute('placeholder', 'Add to toolbar…')
+})
+
+test('read-only mode: no edit button, console stays command-first', async ({ page }) => {
+	await page.getByTestId('mode-ro-combobox').click()
+	await openConsole(page)
+	await expect(page.getByTestId('console-mode-toggle')).toHaveCount(0)
+	// Read-only palette never edits, so the console shows its run box (Command…),
+	// even though a combobox is displayed inline.
+	await expect(page.getByTestId('console-input')).toHaveAttribute('placeholder', 'Command…')
+})
+
+test('edit mode makes toolbar items inert (combobox not clickable)', async ({ page }) => {
+	await page.getByTestId('mode-rw-combobox').click()
+	await openConsole(page)
+	await expect(page.locator('.palette-ide.editing').first()).toBeVisible()
+	// The combobox item content is inert while editing.
+	await expect(page.locator('.toolbar-item-content[inert]').first()).toBeVisible()
+})
+
+test('edit-only console has no mode button (commandBox is displayed)', async ({ page }) => {
+	// The demo displays a `commandBox` (combobox) tool, so the console is
+	// edit-only: no mode button, and the add box is active immediately. The
+	// add panel appears once an add entry is selected.
+	await openConsole(page)
+	await expect(page.getByTestId('console-mode-toggle')).toHaveCount(0)
+	await expect(page.getByTestId('console-input')).toHaveAttribute('placeholder', 'Add to toolbar…')
+	await expect(page.getByTestId('console-add-panel')).toHaveCount(0)
+	await expect(page.getByTestId('console-details-panel')).toBeVisible()
+	await page
+		.getByTestId('console-results')
+		.locator('.palette-default-command-result', { hasText: 'Life Support' })
+		.first()
+		.click()
 	await expect(page.getByTestId('console-add-panel')).toBeVisible()
-	await toggle.uncheck()
-	await expect(input).toHaveAttribute('placeholder', 'Command…')
 })
 
 test('add-to-toolbar flow selects entry + variant', async ({ page }) => {
 	await openConsole(page)
-	await page.getByTestId('console-mode-toggle').check()
 	const addInput = page.getByTestId('console-input')
 	await addInput.fill('Life Support')
 	await page
@@ -62,7 +89,7 @@ test('add-to-toolbar flow selects entry + variant', async ({ page }) => {
 		.locator('.palette-default-command-result', { hasText: 'Life Support' })
 		.first()
 		.click()
-	const panel = page.getByTestId('console-add-panel')
+	const panel = page.getByTestId('console-details-panel')
 	await expect(panel).toContainText('Life Support')
 	await panel
 		.locator('.palette-default-add-variant-trigger', { hasText: 'Life Support (editor)' })
@@ -70,22 +97,22 @@ test('add-to-toolbar flow selects entry + variant', async ({ page }) => {
 	await expect(panel.locator('select').first()).toBeVisible()
 })
 
-test('catalogue lists draggable entries', async ({ page }) => {
+test('add-box results list draggable entries', async ({ page }) => {
 	await openConsole(page)
-	await page.getByTestId('console-mode-toggle').check()
-	const catalogue = page.getByTestId('console-catalogue')
-	await expect(catalogue.locator('.palette-default-command-result').first()).toBeVisible()
-	const draggable = await catalogue
+	const results = page.getByTestId('console-results')
+	await expect(results.locator('.palette-default-command-result').first()).toBeVisible()
+	const draggable = await results
 		.locator('.palette-default-command-result[draggable="true"]')
 		.count()
 	expect(draggable).toBeGreaterThan(0)
 })
 
-test('catalogue drop lands an item in a toolbar gap', async ({ page }) => {
+test('add-box drop lands an item in a toolbar gap', async ({ page }) => {
 	await openConsole(page)
-	await page.getByTestId('console-mode-toggle').check()
-	const catalogue = page.getByTestId('console-catalogue')
-	const source = catalogue.locator('.palette-default-command-result[draggable="true"]').first()
+	const results = page.getByTestId('console-results')
+	const source = results
+		.locator('.palette-default-command-result', { hasText: 'Life Support' })
+		.first()
 	await expect(source).toBeVisible()
 	// `dispatchEvent('dragstart', { dataTransfer: {} })` cannot construct a
 	// real `DataTransfer` (Chromium rejects the init dict), so drive the real
@@ -100,7 +127,7 @@ test('catalogue drop lands an item in a toolbar gap', async ({ page }) => {
 		.first()
 		.evaluate((gap) => {
 			const catalogueRow = document.querySelector(
-				'[data-testid="console-catalogue"] .palette-default-command-result[draggable="true"]'
+				'[data-testid="console-results"] .palette-default-command-result[draggable="true"]'
 			) as HTMLElement | null
 			if (!catalogueRow) return 'no-source'
 			// `new DragEvent(..., { dataTransfer })` rejects non-native

@@ -14,7 +14,7 @@ import {
 	renderPaletteEditor,
 	resolvePaletteEditor,
 	surfaceContextFromScope,
-} from '$lib/palette/index.svelte'
+} from '$lib/palette/edition.svelte'
 import type {
 	PaletteConfig,
 	PaletteConfiguratorComponent,

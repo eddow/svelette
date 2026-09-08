@@ -6,7 +6,7 @@ import {
 	createPaletteDrawerEditor,
 	paletteDefaultDrawerEditor,
 	paletteDrawerCollapse,
-} from '$lib/palette/index.svelte'
+} from '$lib/palette/edition.svelte'
 import { Palette } from '$lib/palette/palette.svelte'
 import type { PaletteEditorContext, PaletteSchema, PaletteToolbarItem } from '$lib/palette/types'
 

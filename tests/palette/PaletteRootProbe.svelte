@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { paletteRoot } from '$lib/palette/index.svelte'
+	import { paletteRoot } from '$lib/palette/edition.svelte'
 	import type { Palette as PaletteRuntime } from '$lib/palette/palette.svelte'
 
 	let { palette }: { palette: PaletteRuntime } = $props()

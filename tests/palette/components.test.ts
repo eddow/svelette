@@ -4,12 +4,14 @@ import {
 	beginPaletteCatalogInsertDrag,
 	Palette,
 	paletteItemDrag,
+	paletteItemShield,
 	paletteRoot,
 	palettes,
-} from '$lib/palette/index.svelte'
+} from '$lib/palette/edition.svelte'
 import type { PaletteConfig } from '$lib/palette/types'
 import IdeProbe from './IdeProbe.svelte'
 import PaletteItemDragProbe from './PaletteItemDragProbe.svelte'
+import PaletteItemShieldToggleProbe from './PaletteItemShieldToggleProbe.svelte'
 import PaletteRootProbe from './PaletteRootProbe.svelte'
 import ParkingEditorStub from './ParkingEditorStub.svelte'
 import ParkingProbe from './ParkingProbe.svelte'
@@ -135,6 +137,18 @@ describe('paletteRoot', () => {
 		expect(notifications.value).toBe(true)
 		root.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true }))
 		expect(notifications.value).toBe(false)
+	})
+
+	it('suppresses tool shortcuts while editing (keys are free for re-binding)', async () => {
+		const run = vi.fn()
+		const palette = testPalette(run)
+		render(PaletteRootProbe, { props: { palette } })
+		const root = screen.getByTestId('palette-root')
+		palettes.editing = palette
+		const event = new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true })
+		root.dispatchEvent(event)
+		expect(run).not.toHaveBeenCalled()
+		expect(event.defaultPrevented).toBe(false)
 	})
 
 	it('reflects editing and dragging state on the root element', async () => {
@@ -351,5 +365,28 @@ describe('paletteRoot', () => {
 	it('exposes paletteRoot and paletteItemDrag as actions', () => {
 		expect(typeof paletteRoot).toBe('function')
 		expect(typeof paletteItemDrag).toBe('function')
+	})
+})
+
+describe('paletteItemShield', () => {
+	afterEach(() => {
+		document.body.replaceChildren()
+	})
+
+	it('sets inert on mount and toggles it when the active flag updates', async () => {
+		render(PaletteItemShieldToggleProbe, { props: { initial: false } })
+		const el = screen.getByTestId('shielded')
+		const toggle = screen.getByTestId('toggle-btn')
+		expect(el.inert).toBe(false)
+
+		await fireEvent.click(toggle)
+		expect(el.inert).toBe(true)
+
+		await fireEvent.click(toggle)
+		expect(el.inert).toBe(false)
+	})
+
+	it('exposes paletteItemShield as an action', () => {
+		expect(typeof paletteItemShield).toBe('function')
 	})
 })

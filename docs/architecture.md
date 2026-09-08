@@ -55,7 +55,8 @@ runtime mapping, and phase history.
 - Pure algorithms → `.ts`; reactive modules → `.svelte.ts`; UI → `.svelte`.
 - One module = one concern, mirroring the reference source map (`types`, `keys`, `palette`,
   `command-box`, `components/*`, `drawer-editor`, `styles/*`).
-- Public entry point: `src/lib/palette/index.svelte.ts` barrel export.
+- Public entry points: `src/lib/palette/core.svelte.ts` (read-only display + run),
+  `src/lib/palette/edition.svelte.ts` (mutation surface, re-exports `core`).
 
 ## 5. Editors are components — no model / variant layer
 
@@ -142,7 +143,7 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 ## 12. Palette runtime (Phase 3 — implemented, review fixes applied)
 
 - `src/lib/palette/palette.svelte.ts` ports `ui/src/palette/palette.ts` verbatim except for the
-  Sursaut runtime swaps below; `src/lib/palette/index.svelte.ts` is the barrel entry point.
+  Sursaut runtime swaps below; `src/lib/palette/core.svelte.ts` / `edition.svelte.ts` are the barrel entry points.
 - `mutts.reactive(x)` → `$state(x)`; `mutts.unwrap` → direct reads. Svelte `$state` never
   proxies class instances, so palette identity is plain `===` (`palettes.editing === this`).
 - `mutts.effect` in `setter()` is omitted: module scope has no effect context, the `WeakMap`
@@ -259,11 +260,11 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 - Demo palette (`src/lib/demo/palette.svelte.ts`): `$state` colony state + `Palette`
   with key bindings, `editorDefaults` for all families, and
   `initialIdeConfig: PaletteBorders` covering every tool family in every region
-  (top command/edit-toggle/lockdown/toggles/threat; left sim-speed/atmosphere/
-  power + nested drawer; right tax/solar/stars; bottom terminal/save/reset/
-  hyper-tick). `src/routes/+page.svelte` renders `Ide` with `$state` borders, an
-  edit-mode toggle, and an inspector binding `renderConfigurator` +
-  `resolveConfiguratorContext` output to `<Configurator context>`.
+  (top command-box-combobox/lockdown/toggles/threat; left sim-speed/atmosphere/
+  power + nested drawer; right tax/solar/stars; bottom console/save/reset/
+  hyper-tick). `src/routes/+page.svelte` renders `Ide` with `$state` borders;
+  the console (head `Console.svelte`) hosts the presentation-only inspector
+  (`renderConfigurator` + `resolveConfiguratorContext` → `<Configurator context>`).
 - Defensive failure mode confirmed: `Toolbar.svelte` try/catch renders nothing on unknown
   tools/missing editors — desired, keeps broken items inert in edit mode instead of crashing
   the bar.
@@ -311,7 +312,7 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   left nested drawer (atmosphere select + sim-speed stepper).
 - Tests: `tests/palette/drawer.test.ts` (6) — factory shape, open-on-click + Escape close,
   collapse-signal close, axis inversion both ways, popup scope publishing, hover travel
-  stays open. Gates: `check` 0/0, `lint` clean, `test` 101 pass, `build` ok.
+  stays open. Gates: `check` 0/0, `lint` clean, `test` 113 pass, `build` ok.
 
 ## 18. Demo page (Stellar Outpost — current)
 
@@ -320,73 +321,105 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   `colonyTheme`, `alertLevel`, `powerPriority`, `gameSpeed`, `taxRate`,
   `solarEfficiency`, `satisfaction`) + system `theme` + `lastAction`, with run
   tools `emergencyProtocol` (disabled at green), `saveGame` (localStorage),
-  `resetSimulation` (dirty-gated), `terminal` (quake-style toggle), and an
-  `editToolbars` boolean bound to `palettes.editing` (icon-only top-bar toggle).
-  Keys: `` ` `` terminal, `N`/`S`/`E` toggles + lockdown, `Ctrl+S` save,
+  `resetSimulation` (dirty-gated), `console` (quake-style toggle — the core
+  `consoleTool`, with demo label/icon override).
+  Keys: `` ` `` console, `N`/`S`/`E` toggles + lockdown, `Ctrl+S` save,
   `+`/`-` sim speed, `1/2/3` threat presets.
 - `initialIdeConfig` avoids duplicate tool/editor pairs across borders: top
-  (command box, edit toggle, lockdown, life-support, shields, threat
+  (command-box launcher, lockdown, life-support, shields, threat
   segmented), left (sim-speed slider, atmosphere select, power segmented +
   nested drawer), right (tax slider, solar stepper, satisfaction stars),
-  bottom (terminal, save, reset, hyper-tick). `editorDefaults` covers all
+  bottom (console, save, reset, hyper-tick). `editorDefaults` covers all
   families (`run`/`boolean`/`enum`/`number`).
-- `src/routes/+page.svelte` renders `Ide` with `$state` borders, save/reset
-  layout buttons, and the item inspector (`renderConfigurator` +
-  `resolveConfiguratorContext` → `<Configurator context>`). The work-zone
-  shows every colony variable as pills + a colony-status panel + an `mm:ss`
-  elapsed-since-launch chip; the open console dims + disables it
-  (`.demo-center.is-dimmed`, quake-style modal).
-- Console overlay (`src/lib/demo/console.svelte.ts` + `src/lib/demo/ConsoleOverlay.svelte`,
-  opened by the `terminal` run tool): popup command-box overlay reusing the
-  `.palette-default-command-*` styles. Command mode runs `paletteCommandEntries` (state tools
-  like "Set Theme to Dark" / "Increase Font Size" execute in both the toolbar box and the
-  console); edit mode swaps to `paletteAddItemEntries` with `enterAction: 'select'`. A
-  checkbutton bound to `palettes.editing` toggles *Command* ↔ *Toolbar edition*.
+- `src/routes/+page.svelte` renders `Ide` with `$state` borders + save/reset
+  layout buttons. The work-zone shows every colony variable as pills + a
+  colony-status panel + an `mm:ss` elapsed-since-launch chip; the open console
+  dims + disables it (`.demo-center.is-dimmed`, quake-style modal).
+- Console (`src/lib/palette/console.svelte.ts` headless state + `src/lib/head/Console.svelte`
+  modal, opened by the core `console` run tool): core owns `consoleState`
+  (`open` + `mode: 'run' | 'edit'`), `openConsole`/`closeConsole`/`toggleConsole`,
+  `consoleTool` — the **run-mode** surface lives in `core.svelte` (read-only palettes can open
+  a command console); the add-to-toolbar UI state (`resetConsoleAddState`, `popupAddList`)
+  stays in `edition.svelte`. The head owns the modal markup/CSS/placement (viewport-centred
+  fixed box, `max-inline-size: 48rem`, non-blocking backdrop so borders stay interactive in
+  edit mode).
+  The console **auto-detects** whether a `commandBox` (combobox) is displayed in any border: if
+  so it opens in **edit mode** (running already happens inline in the combobox, so the modal is
+  for edition only — no edit button); if not it opens **command-first** (run box) and, when the
+  palette is R/W (`editable !== false`), offers a **square edit-icon button**
+  (`console-mode-toggle`, an `aria-pressed` toggle, `✎`/`✓`) on the left of the command box to
+  enter/leave edit mode. A read-only palette gets no edit button and stays in run mode. Adding/removing
+  the `commandBox` item changes behaviour live. Edit mode shows a **single** list: the add-box
+  results (`console-results`, `Add to toolbar…` — the only draggable surface) and, once an add
+  entry is selected, the *Details* panel (`console-details-panel`) with its variants. Run mode
+  shows only the run-box results (`Command…`). Edit mode mirrors `consoleState.mode` onto
+  `palettes.editing` (so the `inert` shield + drag guard engage on the underlying toolbars);
+  closing the console always clears the mirror (plus `palettes.inspecting`), so toolbars never
+  stay inert after an edit-mode close.
+- The toolbar `commandBox` item is a real **commands-combo-box** (`commandBoxPresenter`): a text
+  input + results popup that runs commands inline (Ctrl-Shift-P style). It is a **run** surface,
+  independent of the console. Selecting a toolbar item (`pointerdown` → `palettes.inspecting`)
+  highlights it (`data-inspected`) and renders a **presentation-only** configurator in the
+  console's single *Details* panel (`console-details-panel`) — the same place shows the add
+  variants when an add entry is selected (inspect and add are never used together).
+- While `palette.editing`, `paletteRoot` suppresses tool key bindings (early
+  `if (palette.editing) return`) so keys are free to be re-bound (press-to-rebind), mirroring
+  the pointer side where `paletteItemShield` sets `element.inert` on item content.
 - Add-to-toolbar flow: selected add entry expands via `paletteDerivedVariants` into variant
   cards (boolean/number/enum value inputs, enum allowed-values/keyword filters mirroring the
-  reference `popupAddItem`); the selected variant builds a live `Toolbar` preview. Catalogue
-  (`paletteCatalogEntries`) renders draggable rows. Both paths start native HTML5 drags
+  reference `popupAddItem`). The add-box results (`console-results`, seeded from
+  `paletteAddItemEntries`) render draggable rows — the single drag surface. Native HTML5 drags
   (`PALETTE_CATALOG_DRAG_MIME` + `serializePaletteCatalogDragPayload` on `dataTransfer`,
   `beginPaletteCatalogInsertDrag` + `notifyPaletteCatalogNativeDragStarted` on `dragstart`);
   drops land in the existing `bindPaletteCatalogDrop` toolbar/track/stack zones.
 - `Parking` renders at the top of the console, seeded from the live top border minus the
   command-box item (mirrors the reference `popupParkingToolbars`); parked toolbars can be
   removed/restored through the parking drop zones while editing.
-- Persistence: `+page.svelte` seeds `structuredClone(initialIdeConfig.*)` `$state` at init
-  (server + client first render identical, no hydration mismatch; also avoids mutating the
-  shared module object) and splices a validated stored snapshot in `onMount`
-  (`hydratePaletteLayout` can't run post-init — its `$state` is init-only — so the plain
-  stored borders are spliced directly into the deep proxies). "Save layout" / "Reset layout"
-  buttons round-trip through localStorage.
+- Persistence: `+page.svelte` seeds `structuredClone(demoLayoutFor(activeMode).*)` `$state`
+  at init (server + client first render identical, no hydration mismatch; also avoids mutating
+  the shared module objects) and splices a validated stored snapshot in `onMount`
+  (`hydratePaletteLayout` can't run post-init — its `$state` is init-only — so each
+  stored flat slot is re-nested as its own single-slot track, the same shape
+  `hydratePaletteLayout` produces, and spliced into the deep proxies). The demo ships three
+  **configurations** (`demoConfigs` in `src/lib/demo/palette.svelte.ts`): `rw-combobox`,
+  `rw-command-first`, `ro-combobox` — each with its own reset button; `demoLayoutFor(id)` flips
+  the reactive `demoEditable` flag (`get editable()` reads it). "Save layout" / per-mode "Reset"
+  round-trip through localStorage.
+- **Edit-mode inert:** `paletteItemShield` is a Svelte 5 action with an `update()` that sets
+  `element.inert` on the item content wrapper — a run button/toggle/combobox becomes inert
+  (unfocusable, unclickable) while `palette.editing`, leaving only the `paletteItemDrag` guard
+  to own pointer events (select-for-edition / move).
 - Inspector structural actions: `describeItemConfiguration` on the live toolbar/index
   (resolved by item identity across all four borders) drives move-backward/move-forward
   (splice within the toolbar) + remove buttons and the `bindings.shortcut` display
   (`findByTool`).
 - Init-time constraint respected: all `paletteCommandBoxModel` instances are created during
   component init; stored-layout restore splices plain data in `onMount`, never in handlers.
-- Gates: `check` 0/0, `lint` clean, `test` 101 pass, `build` ok.
+- Gates: `check` 0/0, `lint` clean, `test` 117 pass, `build` ok.
 
 ## 19. E2E coverage (Phase 10 — complete)
 
-- `e2e/palette.spec.ts` (6): edit-mode toggle label + `.palette-ide.editing` chrome,
-  toolbar command-box search/execute ("Set Threat Level to Red" → `⚠️ red` pill),
-  drawer open with axis inversion (left drawer → `is-horizontal` popup) + Escape
-  close, inspector via `pointerdown` on the edit-mode `.toolbar-item-guard`
-  (shortcut display, move-back disabled / move-forward enabled, forward →
-  "Item moved forward"), layout save → reload → "restored" badge → reset,
-  pointer drag reorder (synthetic `PointerEvent` `pointerdown` on the autoOxygen
-  guard + `pointermove`/`pointerup` on `window` with a shared `pointerId`, drop
-  on the gap after alertLevel → order flips to `[commandBox, editToolbars,
+- `e2e/palette.spec.ts` (5): command launcher opens the edit-only console +
+  `.palette-ide.editing` chrome, drawer open with axis inversion (left drawer →
+  `is-horizontal` popup) + Escape close, presentation-only inspector via
+  `pointerdown` on the edit-mode `.toolbar-item-guard` (highlighted item +
+  configurator in the console details panel), layout save → reload → "restored"
+  badge → reset, pointer drag reorder (synthetic `PointerEvent` `pointerdown` on
+  the autoOxygen guard + `pointermove`/`pointerup` on `window` with a shared
+  `pointerId`, drop on the gap after alertLevel → order flips to `[commandBox,
   emergencyProtocol, shieldGenerator, alertLevel, autoOxygen]`).
-- `e2e/console.spec.ts` (6): backtick opens the console (Ide root focused first —
-  `paletteRoot` listens on the root `keydown`, so a bare body-level press never reaches
-  it) + command execute closes the overlay, Terminal button open + Escape close
-  (+ work-zone `is-dimmed` while open), checkbutton swaps `Command…` ↔
-  `Add to toolbar…` placeholders with catalogue + add panel, add flow (Life
-  Support entry → variant card → value select), catalogue rows carry
-  `draggable="true"`, catalogue drop (synthetic `dragstart`/`dragover`/`drop`
-  with a `dataTransfer` stub → session path inserts the row's item into the first
-  toolbar gap, count + 1).
+- `e2e/console.spec.ts` (8): backtick opens the edit-only console (Ide root
+  focused first — `paletteRoot` listens on the root `keydown`, so a bare
+  body-level press never reaches it), Console button open + Escape close
+  (+ work-zone `is-dimmed` while open), **command-first mode** (no combobox →
+  console command-first + square edit button toggles to edit), **read-only mode**
+  (no edit button, stays command-first), **edit-inert** (toolbar item content is
+  `inert` while editing), no mode button when a `commandBox` tool is displayed,
+  add flow (Life Support entry → variant card → value select in the single
+  details panel), tools-panel rows carry `draggable="true"`,
+  tools-panel drop (synthetic `dragstart`/`dragover`/`drop` with a `dataTransfer`
+  stub → session path inserts the row's item into the first toolbar gap,
+  count + 1).
 - E2E lessons: `paletteItemDrag` inspects on `pointerdown`, so tests dispatch
   `pointerdown`/`pointerup` on the guard instead of `click({ force: true })`; keyboard
   shortcut tests must focus `.palette-ide` (tabindex=0) before pressing. Trusted
@@ -403,7 +436,7 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   (result `toBeVisible` timeout; green in 2 full + 3 isolated reruns) — mitigated by
   waiting for `.palette-default-command-popover` before asserting the result (the
   140ms `inline-size` transition delays popover visibility vs. actionability).
-- Gates: `check` 0/0, `lint` clean, `test` 101 pass, `test:e2e` 13 pass, `build` ok.
+- Gates: `check` 0/0, `lint` clean, `test` 113 pass, `test:e2e` 12 pass, `build` ok.
 
 ## 20. Drag-engine `$state` proxy hazards (Phase 10 — found via e2e)
 

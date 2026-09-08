@@ -1,8 +1,27 @@
 import { headEditors } from '$lib/head/registry'
-import { Palette, palettes } from '$lib/palette/palette.svelte'
+import { consoleTool } from '$lib/palette/console.svelte'
+import { Palette } from '$lib/palette/palette.svelte'
 import type { PaletteBorders } from '$lib/palette/types'
-import { closeConsole, consoleUi, openConsole } from './console.svelte'
 import { demoEditors } from './editors/registry'
+
+/** The demo's read/write flag, toggled per configuration (reactive). */
+let demoEditable = $state(true)
+
+/** Switch the demo palette between read-only and editable. */
+export function setDemoEditable(value: boolean): void {
+	demoEditable = value
+}
+
+/** The distinct demo configurations, each loaded by its own reset button. */
+export type DemoMode = 'rw-combobox' | 'rw-command-first' | 'ro-combobox'
+
+export type DemoConfig = {
+	id: DemoMode
+	label: string
+	description: string
+	editable: boolean
+	layout: PaletteBorders
+}
 
 export type DemoState = {
 	autoOxygen: boolean
@@ -61,20 +80,6 @@ function isColonyDirty(): boolean {
 
 export const demoPalette: Palette = new Palette({
 	tools: {
-		editToolbars: {
-			type: 'boolean',
-			label: 'Edit toolbars',
-			icon: '✏️',
-			categories: ['system'],
-			keywords: ['edit', 'toolbars', 'customize', 'layout'],
-			get value(): boolean {
-				return palettes.editing === demoPalette
-			},
-			set value(value: boolean) {
-				palettes.editing = value ? demoPalette : undefined
-			},
-			default: false,
-		},
 		autoOxygen: {
 			type: 'boolean',
 			label: 'Automated Life Support',
@@ -305,28 +310,15 @@ export const demoPalette: Palette = new Palette({
 				resetColony()
 			},
 		},
-		terminal: {
-			label: 'Developer Terminal',
-			icon: '💻',
-			categories: ['system', 'debug'],
-			keywords: ['console', 'cli', 'debug', 'shell'],
-			get can() {
-				return true
-			},
-			run() {
-				// Quake-style toggle: the same shortcut/button opens and closes.
-				if (consoleUi.open) {
-					closeConsole()
-					demoState.lastAction = 'Terminal closed'
-				} else {
-					openConsole()
-					demoState.lastAction = 'Terminal opened'
-				}
-			},
+		console: {
+			// The core `console` tool — running it shows the console (quake toggle).
+			// The demo overrides its label/icon to fit the Stellar Outpost theme;
+			// the key binding (`` ` `` → `console`) is pure config below.
+			...consoleTool({ label: 'Developer Console', icon: '💻' }),
 		},
 	},
 	keys: {
-		'`': 'terminal',
+		'`': 'console',
 		N: 'autoOxygen',
 		S: 'shieldGenerator',
 		E: 'emergencyProtocol',
@@ -338,7 +330,7 @@ export const demoPalette: Palette = new Palette({
 		'3': 'alertLevel=red',
 	},
 	get editable() {
-		return true
+		return demoEditable
 	},
 	// Demo proves the default head: every family resolves through `headEditors`,
 	// and the single demo override (`number.slider`) replaces the head's slider
@@ -359,7 +351,11 @@ export const demoPalette: Palette = new Palette({
 	},
 })
 
-export const initialIdeConfig: PaletteBorders = {
+/**
+ * The full colony layout with a top-bar `commandBox` combobox (the "R/W +
+ * command box" and "R-O + command box" configurations share this shape).
+ */
+const rwComboboxLayout: PaletteBorders = {
 	// Top bar: instant actions + high-priority states. The command box opens
 	// first (VS-Code style), followed by the icon-only edit-mode toggle.
 	top: [
@@ -369,12 +365,7 @@ export const initialIdeConfig: PaletteBorders = {
 				toolbar: [
 					{
 						editor: 'commandBox',
-						config: { icon: '⌘', label: 'Command', hint: 'Search and run colony actions' },
-					},
-					{
-						tool: 'editToolbars',
-						editor: 'toggle',
-						config: { icon: '✏️', label: 'Edit toolbars', hint: 'Toggle toolbar editing' },
+						config: { icon: '⌘', label: 'Command', hint: 'Search and run a command' },
 					},
 					{
 						tool: 'emergencyProtocol',
@@ -473,7 +464,7 @@ export const initialIdeConfig: PaletteBorders = {
 				space: 0.5,
 				toolbar: [
 					{
-						tool: 'terminal',
+						tool: 'console',
 						editor: 'button',
 						config: { icon: '💻', label: 'Terminal', hint: 'Head button (run)' },
 					},
@@ -497,3 +488,54 @@ export const initialIdeConfig: PaletteBorders = {
 		],
 	],
 }
+
+/**
+ * Command-first layout: same colony tools, but **no** `commandBox` combobox on
+ * any toolbar. The console opens command-first (its own run box) and, when the
+ * palette is editable, shows a square edit-icon button to enter/leave edit mode.
+ */
+const commandFirstLayout: PaletteBorders = structuredClone(rwComboboxLayout)
+// Drop the `commandBox` item from the top toolbar so no combobox is displayed.
+commandFirstLayout.top = commandFirstLayout.top.map((track) =>
+	track.map((slot) => ({
+		...slot,
+		toolbar: slot.toolbar.filter((item) => item.editor !== 'commandBox'),
+	}))
+)
+
+/** All demo configurations; each gets its own "reset" button in the demo bar. */
+export const demoConfigs: readonly DemoConfig[] = [
+	{
+		id: 'rw-combobox',
+		label: 'R/W + command box',
+		description:
+			'Read-write; the toolbar hosts a command-box combobox (console opens in edit mode).',
+		editable: true,
+		layout: rwComboboxLayout,
+	},
+	{
+		id: 'rw-command-first',
+		label: 'R/W command-first',
+		description:
+			'Read-write; no combobox — the console opens command-first with a square edit-icon button.',
+		editable: true,
+		layout: commandFirstLayout,
+	},
+	{
+		id: 'ro-combobox',
+		label: 'R-O + command box',
+		description: 'Read-only; the combobox runs commands inline, but the layout is not editable.',
+		editable: false,
+		layout: rwComboboxLayout,
+	},
+]
+
+/** Default configuration (matches the legacy `initialIdeConfig`). */
+export function demoLayoutFor(id: DemoMode): PaletteBorders {
+	const config = demoConfigs.find((config) => config.id === id) ?? demoConfigs[0]
+	setDemoEditable(config.editable)
+	return config.layout
+}
+
+/** Back-compat alias removed in favour of `demoLayoutFor('rw-combobox')`. */
+export const initialIdeConfig: PaletteBorders = rwComboboxLayout

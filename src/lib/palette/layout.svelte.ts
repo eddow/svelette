@@ -1366,6 +1366,11 @@ export function paletteRoot(element: HTMLElement, palette: Palette): ReturnType<
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented) return
 		if (isEditableTarget(event.target)) return
+		// While editing, tool key bindings are suppressed so the keys are free to
+		// be re-bound (press-to-rebind for shortcuts). This mirrors the pointer
+		// side, where the `inert` shield already blocks run/toggle/check clicks
+		// in edit mode (`paletteItemShield`).
+		if (palette.editing) return
 		const toolId = palette.keys.resolve(event)
 		if (!toolId) return
 		event.preventDefault()
@@ -1535,9 +1540,15 @@ export function paletteItemDrag(
 	}
 }
 
-export function paletteItemShield(element: HTMLElement, active: boolean): ReturnType<Action> {
+export function paletteItemShield(
+	element: HTMLElement,
+	active: boolean
+): { update(next: boolean): void; destroy(): void } {
 	element.inert = active
 	return {
+		update(next: boolean) {
+			element.inert = next
+		},
 		destroy() {
 			element.inert = false
 		},
