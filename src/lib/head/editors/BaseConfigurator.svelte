@@ -12,7 +12,23 @@
 	}
 
 	let { context }: Props = $props()
-	const view = $derived(configuratorPresenter(context))
+	// The live toolbar/track/border ride on the scope when the console builds
+	// the configurator context from `palettes.inspecting` (G2); without them
+	// the presenter still renders, but `remove()` no-ops.
+	const view = $derived(
+		configuratorPresenter(
+			context,
+			context.scope.toolbar !== undefined &&
+				context.scope.track !== undefined &&
+				context.scope.border !== undefined
+				? {
+						toolbar: context.scope.toolbar as never,
+						track: context.scope.track as never,
+						border: context.scope.border as never
+					}
+				: undefined
+		)
+	)
 </script>
 
 <div class="palette-default-config-table">
@@ -59,4 +75,22 @@
 			</select>
 		</div>
 	</div>
+	{#if view.removable}
+		<div class="palette-default-config-row">
+			<div class="palette-default-config-key">
+				<strong>Delete</strong>
+				<span>Remove this editor from its toolbar.</span>
+			</div>
+			<div class="palette-default-config-value">
+				<button
+					type="button"
+					class="palette-default-config-delete"
+					data-testid="configurator-delete"
+					onclick={() => view.remove()}
+				>
+					Delete editor
+				</button>
+			</div>
+		</div>
+	{/if}
 </div>

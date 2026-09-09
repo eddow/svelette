@@ -83,11 +83,11 @@
 	const isEditing = $derived(canEdit && (editOnly || consoleState.mode === 'edit'))
 	const activeBox = $derived(isEditing ? popupAddCommandBox : popupCommandBox)
 
-	// The inspected item (selected on the toolbar via `pointerdown`) drives a
-	// presentation-only configurator: label/icon/hint/editor/tone. Structural
-	// edits (move/remove) are out of scope here — the console renders the
-	// configurator "snippet" for the current selection, while the live editor is
-	// highlighted (not re-rendered) in the toolbar.
+	// The inspected item (selected on the toolbar via `pointerdown`) drives the
+	// configurator: label/icon/hint/editor/tone plus the item-level delete
+	// action (G2). The configurator edits presentation in place; deletion
+	// removes the item from its live toolbar/track/border (carried on
+	// `palettes.inspecting`) and clears the inspector.
 	const inspecting = $derived(
 		palettes.inspecting?.palette === (palette as never) ? palettes.inspecting : undefined
 	)
@@ -96,6 +96,17 @@
 	)
 	const inspectingTool = $derived(
 		inspectingItem?.tool ? palette.tool(inspectingItem.tool) : undefined
+	)
+	const inspectingLocation = $derived(
+		inspecting?.toolbar !== undefined &&
+			inspecting?.track !== undefined &&
+			inspecting?.border !== undefined
+			? {
+					toolbar: inspecting.toolbar as never,
+					track: inspecting.track as never,
+					border: inspecting.border as never
+				}
+			: undefined
 	)
 	const Configurator = $derived.by<Component<{ context: PaletteEditorContext }> | undefined>(() => {
 		if (!inspectingItem) return undefined
@@ -111,10 +122,22 @@
 	const configuratorContext = $derived.by<PaletteEditorContext | undefined>(() => {
 		if (!inspectingItem || !Configurator) return undefined
 		try {
-			return palette.resolveConfiguratorContext(inspectingItem as never, inspectingTool as never, {
-				palette: palette as never,
-				region: inspecting?.region
-			}) as unknown as PaletteEditorContext
+			const context = palette.resolveConfiguratorContext(
+				inspectingItem as never,
+				inspectingTool as never,
+				{
+					palette: palette as never,
+					region: inspecting?.region
+				}
+			) as unknown as PaletteEditorContext & { scope: Record<string, unknown> }
+			// Carry the live location so `BaseConfigurator`'s delete button can
+			// call `configuratorPresenter(context, location).remove()`.
+			if (inspectingLocation) {
+				context.scope.toolbar = inspectingLocation.toolbar
+				context.scope.track = inspectingLocation.track
+				context.scope.border = inspectingLocation.border
+			}
+			return context
 		} catch {
 			return undefined
 		}
@@ -132,14 +155,12 @@
 		}
 	})
 
-	// Parking seeds from the live top border, excluding the toolbar command box
-	// (mirrors the reference `popupParkingToolbars`).
-	const parkingToolbars = $derived<PaletteToolbar[]>(
-		top
-			.flatMap((track) => track.map((slot) => slot.toolbar))
-			.map((toolbar) => toolbar.filter((item) => item.editor !== 'commandBox'))
-			.filter((toolbar) => toolbar.length > 0)
-	)
+	// G3 — parking binds the LIVE top border (not a snapshot): rows render
+	// live toolbars, `×` removes from the real border via `removePaletteItem`
+	// plumbing, and every row is a real drag-engine drop target. The
+	// command-box item is excluded from the parking *view* (mirrors the
+	// reference `popupParkingToolbars`) by filtering at render — the live
+	// border itself is untouched.
 	const parkingScope = $derived({ palette: palette as never })
 
 	const selectedEntry = $derived<PaletteAddItemCommandEntry | undefined>(
@@ -246,9 +267,11 @@
 			×
 		</button>
 		<div class="palette-default-command-top">
-			{#if parkingToolbars.length > 0}
+			{#if top.length > 0}
 				<Parking
-					toolbars={parkingToolbars}
+					toolbars={[]}
+					border={top}
+					region="top"
 					palette={palette as never}
 					scope={parkingScope}
 					el={{ class: 'palette-default-command-parking' }}

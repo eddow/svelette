@@ -319,21 +319,24 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 - `src/lib/demo/palette.svelte.ts` is a **Stellar Outpost** space-colony sim:
   `$state` colony state (`autoOxygen`, `shieldGenerator`, `fastMode`,
   `colonyTheme`, `alertLevel`, `powerPriority`, `gameSpeed`, `taxRate`,
-  `solarEfficiency`, `satisfaction`) + system `theme` + `lastAction`, with run
-  tools `emergencyProtocol` (disabled at green), `saveGame` (localStorage),
-  `resetSimulation` (dirty-gated), `console` (quake-style toggle — the core
-  `consoleTool`, with demo label/icon override).
+  `solarEfficiency`, `satisfaction`) + `missionElapsed` (the mission clock) +
+  system `theme` + `lastAction`, with run tools `emergencyProtocol` (disabled at
+  green), `saveGame` (localStorage), `resetSimulation` (dirty-gated), `console`
+  (quake-style toggle — the core `consoleTool`, with demo label/icon override),
+  and a **status** tool `missionClock` (`type: 'status'`, passive read-only `value`
+  reading `demoState.missionElapsed`, rendered by the head's `StatusEditor`).
   Keys: `` ` `` console, `N`/`S`/`E` toggles + lockdown, `Ctrl+S` save,
   `+`/`-` sim speed, `1/2/3` threat presets.
 - `initialIdeConfig` avoids duplicate tool/editor pairs across borders: top
   (command-box launcher, lockdown, life-support, shields, threat
   segmented), left (sim-speed slider, atmosphere select, power segmented +
   nested drawer), right (tax slider, solar stepper, satisfaction stars),
-  bottom (console, save, reset, hyper-tick). `editorDefaults` covers all
-  families (`run`/`boolean`/`enum`/`number`).
+  bottom (console, save, reset, hyper-tick, mission-clock status). `editorDefaults`
+  covers all families (`run`/`boolean`/`enum`/`number`/`status`).
 - `src/routes/+page.svelte` renders `Ide` with `$state` borders + save/reset
   layout buttons. The work-zone shows every colony variable as pills + a
-  colony-status panel + an `mm:ss` elapsed-since-launch chip; the open console
+  colony-status panel + an `mm:ss` elapsed-since-launch chip (the same
+  `demoState.missionElapsed` the status tool reads); the open console
   dims + disables it (`.demo-center.is-dimmed`, quake-style modal).
 - Console (`src/lib/palette/console.svelte.ts` headless state + `src/lib/head/Console.svelte`
   modal, opened by the core `console` run tool): core owns `consoleState`

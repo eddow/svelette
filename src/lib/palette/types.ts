@@ -60,6 +60,22 @@ export type PaletteToolRun = PaletteToolBase & {
 }
 
 /**
+ * Passive status tool: a read-only value indicator that launches nothing and is
+ * never editable. Unlike a run tool it has no `run()`; unlike an editable tool
+ * it has no `default` and no setter. Rendered by the head's status editor as a
+ * plain read-only label/gauge.
+ *
+ * The demo's "mission clock" is a status tool — it ticks in place and cannot be
+ * clicked, toggled, or re-configured.
+ */
+export type PaletteStatusTool = PaletteToolBase & {
+	/** The status family discriminator. */
+	type: 'status'
+	/** The current (read-only) status value. */
+	readonly value: string
+}
+
+/**
  * Read-only status shape shared by editable tools.
  */
 export type PaletteToolStatus<T> = PaletteToolBase & {
@@ -131,22 +147,32 @@ export type PaletteToolEnum<T extends string = string> = PaletteToolEdit<T> & {
 	readonly commandBoxEnumCommands?: 'per-value'
 }
 
-export type PaletteAnyTool = PaletteToolRun | PaletteToolBool | PaletteToolNumber | PaletteToolEnum
+export type PaletteAnyTool =
+	| PaletteToolRun
+	| PaletteToolBool
+	| PaletteToolNumber
+	| PaletteToolEnum
+	| PaletteStatusTool
 export type PaletteTools = Record<string, PaletteAnyTool>
 export type PaletteTool<TTools extends PaletteTools = PaletteTools> = TTools[keyof TTools & string]
 export type PaletteEditableTool<TTools extends PaletteTools = PaletteTools> = Exclude<
 	PaletteTool<TTools>,
-	PaletteToolRun
+	PaletteToolRun | PaletteStatusTool
 >
 export type PaletteToolFamily<TTools extends PaletteTools = PaletteTools> =
 	| 'run'
 	| 'item'
+	| 'status'
 	| PaletteEditableTool<TTools>['type']
 
 export type PaletteToolByFamily<
 	TTools extends PaletteTools = PaletteTools,
 	TFamily extends PaletteToolFamily<TTools> = PaletteToolFamily<TTools>,
-> = TFamily extends 'run' ? PaletteToolRun : Extract<PaletteEditableTool<TTools>, { type: TFamily }>
+> = TFamily extends 'run'
+	? PaletteToolRun
+	: TFamily extends 'status'
+		? PaletteStatusTool
+		: Extract<PaletteEditableTool<TTools>, { type: TFamily }>
 
 export type PaletteEditableToolByFamily<
 	TTools extends PaletteTools = PaletteTools,
@@ -156,6 +182,12 @@ export type PaletteEditableToolByFamily<
 export type PaletteKeystroke = string
 
 export type PaletteKeyBindings = Record<PaletteKeystroke, string>
+
+/**
+ * Canonical singular alias for `PaletteKeyBindings`, matching the reference
+ * `@sursaut/ui/palette` public type name.
+ */
+export type PaletteKeyBinding = PaletteKeyBindings
 
 /**
  * Normalized keyboard binding registry for palette command specs.
@@ -244,6 +276,17 @@ export type PaletteToolbarItem<
 	TEditor extends string = string,
 	TConfig = unknown,
 > = PaletteToolToolbarItem<TTool, TEditor, TConfig> | PaletteEditorOnlyToolbarItem<TEditor, TConfig>
+
+/**
+ * Icon renderer provided by the palette consumer, matching the reference
+ * `PaletteDrawerIconRenderer`. Receives the raw icon value and returns the
+ * rendered element (or `undefined` to suppress it).
+ *
+ * The port keeps this as a public type for API parity, though the bundled head
+ * renders `PaletteIcon` (`string | Component`) directly rather than through a
+ * renderer function.
+ */
+export type PaletteDrawerIconRenderer = (icon: PaletteIcon | undefined) => Component | undefined
 
 /**
  * Toolbar item that opens a child toolbar track **perpendicular** to its parent.
@@ -827,6 +870,23 @@ export interface PaletteDragging<TPalette extends Palette = Palette> {
 	toolbar: TPalette extends Palette<infer TSchema>
 		? PaletteToolbar<PaletteItem<TSchema>>
 		: PaletteToolbar
+	/**
+	 * Pending detach for item drags (detach-on-activate).
+	 *
+	 * `createItemDragging` builds the ephemeral single-item shell up-front
+	 * but must NOT splice the item out of its live toolbar until the pointer
+	 * passes the activation threshold — otherwise a plain click (or any
+	 * pre-activation render) shows the tool as disappeared. `onActivate`
+	 * consumes this exactly once (splice + preview); `onClick`/abandon paths
+	 * leave the toolbar untouched when it is still pending.
+	 */
+	pendingDetach?: {
+		item: TPalette extends Palette<infer TSchema> ? PaletteItem<TSchema> : PaletteToolbarItem
+		toolbar: TPalette extends Palette<infer TSchema>
+			? PaletteToolbar<PaletteItem<TSchema>>
+			: PaletteToolbar
+		index: number
+	}
 	/** Optional toolbar preview. */
 	toolbarPreview?: {
 		/** The count of items in the preview. */

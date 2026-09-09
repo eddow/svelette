@@ -29,15 +29,20 @@ import {
 	paletteCommandBoxModel,
 	paletteCommandEntries,
 } from './command-box.svelte'
+import { removePaletteItem } from './layout.svelte'
 import type {
+	PaletteBorder,
 	PaletteEditorChoice,
 	PaletteEditorContext,
 	PaletteSchema,
+	PaletteStatusTool,
 	PaletteToolBool,
+	PaletteToolbar,
 	PaletteToolbarItem,
 	PaletteToolEnum,
 	PaletteToolNumber,
 	PaletteToolRun,
+	PaletteTrack,
 } from './types'
 
 export type HeadItemConfigBase = {
@@ -182,6 +187,31 @@ export type TogglePresenter = {
 	readonly tone: 'neutral' | 'accent'
 	readonly pressed: boolean
 	toggle(): boolean
+}
+
+export type StatusPresenter = {
+	readonly label: string
+	readonly icon: string | undefined
+	readonly title: string
+	readonly tone: 'neutral' | 'accent'
+	readonly value: string
+}
+
+/** View-model for a passive status tool (read-only indicator, no interaction). */
+export function statusPresenter(
+	context: PaletteEditorContext<PaletteStatusTool, PaletteToolbarItem, PaletteSchema>
+): StatusPresenter {
+	const meta = headMeta(context.item)
+	const tool = context.tool
+	return {
+		label: meta.label,
+		icon: meta.icon ?? (typeof tool.icon === 'string' ? tool.icon : undefined),
+		title: headTooltip(context.item, meta.hint),
+		tone: meta.tone,
+		get value() {
+			return tool.value
+		},
+	}
 }
 
 /** View-model for a boolean tool: resolved icon + pressed flag + `toggle()`. */
@@ -335,18 +365,32 @@ export type ConfiguratorPresenter = {
 	readonly tone: 'neutral' | 'accent'
 	readonly editor: string | undefined
 	readonly editorChoices: readonly PaletteEditorChoice[]
+	/** Item-level deletion (G2): always true — every editor is removable. */
+	readonly removable: boolean
 	setText(key: 'icon' | 'label' | 'hint', value: string): void
 	setTone(value: string): void
 	setEditor(value: string): void
+	/** Remove the item from its toolbar, pruning empty toolbar/track. */
+	remove(): boolean
 }
 
 /** View-model for the generic configure panel (label/icon/hint/editor/tone). */
 export function configuratorPresenter(
 	context: PaletteEditorContext<
-		PaletteToolBool | PaletteToolNumber | PaletteToolEnum<string> | PaletteToolRun | undefined,
+		| PaletteToolBool
+		| PaletteToolNumber
+		| PaletteToolEnum<string>
+		| PaletteToolRun
+		| PaletteStatusTool
+		| undefined,
 		PaletteToolbarItem,
 		PaletteSchema
-	>
+	>,
+	location?: {
+		readonly toolbar: PaletteToolbar
+		readonly track: PaletteTrack
+		readonly border: PaletteBorder
+	}
 ): ConfiguratorPresenter {
 	const item = context.item
 	const meta = headMeta(item)
@@ -384,6 +428,11 @@ export function configuratorPresenter(
 				delete config.keywords
 				delete config.choiceDisplay
 			}
+		},
+		removable: true,
+		remove() {
+			if (!location) return false
+			return removePaletteItem(item, location.toolbar, location.track, location.border)
 		},
 	}
 }

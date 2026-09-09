@@ -2,7 +2,7 @@
 
 ## Tools
 
-Four families (`src/lib/palette/types.ts`):
+Five families (`src/lib/palette/types.ts`):
 
 | Family    | Shape                                              | Examples                          |
 | --------- | -------------------------------------------------- | --------------------------------- |
@@ -10,18 +10,22 @@ Four families (`src/lib/palette/types.ts`):
 | `boolean` | `{ type: 'boolean', value, default }`              | `autoOxygen`, `shieldGenerator`   |
 | `enum`    | `{ type: 'enum', value, default, values[] }`       | `alertLevel`, `colonyTheme`, `powerPriority` |
 | `number`  | `{ type: 'number', value, default, min?, max?, step? }` | `gameSpeed`, `taxRate`, `satisfaction` |
+| `status`  | `{ type: 'status', value }` (read-only, no `run()`, no `default`) | `missionClock` (passive clock readout) |
 
 Tools carry `label`, `icon` (`PaletteIcon = string | Component`), `categories`,
 `keywords`. Editable tools expose get/set `value` — in the demo these proxy a
 module-level `$state` object (`demoState`, the Stellar Outpost colony state), so
-every editor mutation is reactive.
+every editor mutation is reactive. A **status** tool is a passive indicator: the
+head's `StatusEditor` renders it as a read-only label/gauge; it launches nothing,
+has no setter, and is never addable/editable in the console.
 `Snippet` is excluded from `PaletteIcon`: `Component` and `Snippet` are both
 callables with no runtime discriminator, so the `Icon` helper could never tell
 them apart — wrap inline markup in a component instead.
 
-Helpers: `isRunTool` / `isEditableTool` guards, `paletteToolFamily(tool)`,
-`paletteTool(palette, spec)` (same resolution as `palette.tool(spec)`),
-`paletteEnumValueKeywords(value)` (searchable keywords for enum values).
+Helpers: `isRunTool` / `isEditableTool` / `isStatusTool` guards,
+`paletteToolFamily(tool)`, `paletteTool(palette, spec)` (same resolution as
+`palette.tool(spec)`), `paletteEnumValueKeywords(value)` (searchable keywords
+for enum values).
 
 ## Tool specs
 
@@ -63,7 +67,7 @@ time), `inspecting` (`{ item, palette, region? }`), `dragging` (pointer session)
 
 Keyed family → variant. The default head (`src/lib/head/registry.ts`, `headEditors`)
 provides one variant per family (`boolean/toggle`, `enum/select`, `number/slider`,
-`run/button`, `item/commandBox+drawer`); the demo registry
+`run/button`, `item/commandBox+drawer`, `status/status`); the demo registry
 (`src/lib/demo/editors/registry.ts`) adds extras and merges per family so the head
 stays the fallback:
 
@@ -73,10 +77,11 @@ stays the fallback:
   `stars` extension (play/rating row)
 - `run`: `button` (head) — demo adds nothing
 - `item` (editor-only, no tool): `commandBox`, `drawer` (head; demo adds nothing)
+- `status`: `status` (head `StatusEditor` — passive read-only readout)
 
 Head components are dumb: each binds a headless core presenter
 (`src/lib/palette/presenters.svelte.ts` — `button/toggle/select/slider/commandBox/
-configurator` presenters; see `docs/creating-a-head.md`). Full usage in
+status/configurator` presenters; see `docs/creating-a-head.md`). Full usage in
 `docs/using-the-default-head.md`; extraction history in `docs/head-extraction.md`.
 
 `spec(editor, configure, footprint?)` builds a `PaletteEditorSpec`; Svelte

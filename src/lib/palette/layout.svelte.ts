@@ -167,11 +167,30 @@ export function regionDirection(region: PaletteRegion): PaletteOrientation {
 	return region === 'left' || region === 'right' ? 'vertical' : 'horizontal'
 }
 
-function pointDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+/** Proximity halo (px) applied to every drop-target kind when near enough. */
+export const PALETTE_PROXIMITY_HALO = 12
+
+/**
+ * Shared near-enough test for all three drop-target kinds (G1 uniform halo).
+ *
+ * A target registers when the pointer is contained or within `halo` px
+ * (Euclidean `rectDistanceToPoint`). Track/toolbar resolvers filter with this
+ * before picking the nearest; the stack resolver uses it instead of the old
+ * directional `expandStackSpaceRect` padding so all kinds share one halo.
+ */
+export function withinProximityHalo(
+	rect: Pick<DOMRectReadOnly, 'left' | 'right' | 'top' | 'bottom'>,
+	point: { x: number; y: number },
+	halo: number = PALETTE_PROXIMITY_HALO
+): boolean {
+	return rectDistanceToPoint(rect, point) <= halo
+}
+
+export function pointDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
 	return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
-function rectContainsPoint(
+export function rectContainsPoint(
 	rect: Pick<DOMRectReadOnly, 'left' | 'right' | 'top' | 'bottom'>,
 	point: { x: number; y: number }
 ): boolean {
@@ -180,7 +199,7 @@ function rectContainsPoint(
 	)
 }
 
-function rectDistanceToPoint(
+export function rectDistanceToPoint(
 	rect: Pick<DOMRectReadOnly, 'left' | 'right' | 'top' | 'bottom'>,
 	point: { x: number; y: number }
 ): number {
@@ -191,11 +210,11 @@ function rectDistanceToPoint(
 	return Math.hypot(dx, dy)
 }
 
-function expandStackSpaceRect(
+export function expandStackSpaceRect(
 	rect: Pick<DOMRectReadOnly, 'left' | 'right' | 'top' | 'bottom' | 'width' | 'height'>,
 	direction: PaletteOrientation
 ): Pick<DOMRectReadOnly, 'left' | 'right' | 'top' | 'bottom' | 'width' | 'height'> {
-	const halo = 12
+	const halo = PALETTE_PROXIMITY_HALO
 	return direction === 'horizontal'
 		? {
 				left: rect.left,
@@ -311,6 +330,32 @@ export function removeEmptyTrack(border: PaletteBorder, track: PaletteTrack): vo
 	const trackIndex = border.indexOf(track)
 	if (trackIndex < 0) return
 	border.splice(trackIndex, 1)
+}
+
+/**
+ * Headless item removal (G2, D2 item-level / D3 lives in layout).
+ *
+ * Removes `item` from `toolbar` by identity, then prunes the emptied toolbar
+ * (and its track, when that empties too) via `removeToolbar`/`removeEmptyTrack`.
+ * This is the single mutation behind both deletion paths: the editor edit
+ * surface's delete button and parking's `×` button.
+ *
+ * @returns `true` when the item was present and removed.
+ */
+export function removePaletteItem(
+	item: PaletteToolbarItem,
+	toolbar: PaletteToolbar,
+	track: PaletteTrack,
+	border: PaletteBorder
+): boolean {
+	const index = toolbar.indexOf(item)
+	if (index < 0) return false
+	toolbar.splice(index, 1)
+	if (toolbar.length === 0) {
+		removeToolbar(track, toolbar)
+		removeEmptyTrack(border, track)
+	}
+	return true
 }
 
 /**
@@ -482,7 +527,7 @@ const stackSpaceMeta = new WeakMap<HTMLElement, PaletteStackSpace>()
 const toolbarSpaces = new Set<HTMLElement>()
 const toolbarSpaceMeta = new WeakMap<HTMLElement, PaletteToolbarSpace>()
 
-type MeasuredTarget<T> = { target: T; rect: DOMRect; element: HTMLElement }
+export type MeasuredTarget<T> = { target: T; rect: DOMRect; element: HTMLElement }
 
 function measureTargets<T>(entries: Set<HTMLElement>, meta: WeakMap<HTMLElement, T>) {
 	return Array.from(entries).flatMap((element): MeasuredTarget<T>[] => {
@@ -496,7 +541,7 @@ function measureTargets<T>(entries: Set<HTMLElement>, meta: WeakMap<HTMLElement,
 	})
 }
 
-function resolveCandidate<T>(
+export function resolveCandidate<T>(
 	targets: readonly MeasuredTarget<T>[],
 	point: { x: number; y: number }
 ): (MeasuredTarget<T> & { contained: boolean }) | undefined {
@@ -540,11 +585,12 @@ function trackSpaceElement(track: PaletteTrack, index: number): HTMLElement | un
 	return undefined
 }
 
-function resolveTrackSpaceTarget(point: {
-	x: number
-	y: number
-}): PaletteTrackDragTarget | undefined {
-	const candidate = resolveCandidate(trackSpaceTargets(), point)
+export function resolveTrackSpaceTargetFromTargets(
+	targets: readonly MeasuredTarget<PaletteTrackSpace>[],
+	point: { x: number; y: number }
+): PaletteTrackDragTarget | undefined {
+	const near = targets.filter(({ rect }) => withinProximityHalo(rect, point))
+	const candidate = resolveCandidate(near, point)
 	if (!candidate) return undefined
 	const { target, rect, element, contained } = candidate
 	const axis = target.direction === 'horizontal' ? 'horizontal' : 'vertical'
@@ -558,11 +604,12 @@ function resolveTrackSpaceTarget(point: {
 	return { ...target, element, kind: 'track-space' as const, contained, split }
 }
 
-function resolveToolbarSpaceTarget(point: {
-	x: number
-	y: number
-}): PaletteToolbarDragTarget | undefined {
-	const candidate = resolveCandidate(toolbarSpaceTargets(), point)
+export function resolveToolbarSpaceTargetFromTargets(
+	targets: readonly MeasuredTarget<PaletteToolbarSpace>[],
+	point: { x: number; y: number }
+): PaletteToolbarDragTarget | undefined {
+	const near = targets.filter(({ rect }) => withinProximityHalo(rect, point))
+	const candidate = resolveCandidate(near, point)
 	if (!candidate) return undefined
 	return {
 		...candidate.target,
@@ -572,15 +619,14 @@ function resolveToolbarSpaceTarget(point: {
 	}
 }
 
-function resolveStackSpaceTarget(point: {
-	x: number
-	y: number
-}): PaletteStackDragTarget | undefined {
+export function resolveStackSpaceTargetFromTargets(
+	targets: readonly MeasuredTarget<PaletteStackSpace>[],
+	point: { x: number; y: number }
+): PaletteStackDragTarget | undefined {
 	let best: { distance: number; value: PaletteStackDragTarget } | undefined
-	for (const { target, rect, element } of stackSpaceTargets()) {
-		const proximityRect = expandStackSpaceRect(rect, target.direction)
-		const proximityDistance = rectDistanceToPoint(proximityRect, point)
-		if (!rectContainsPoint(proximityRect, point) && proximityDistance > 0) continue
+	for (const { target, rect, element } of targets) {
+		const proximityDistance = rectDistanceToPoint(rect, point)
+		if (proximityDistance > PALETTE_PROXIMITY_HALO) continue
 		const candidate: PaletteStackDragTarget = {
 			...target,
 			element,
@@ -591,6 +637,56 @@ function resolveStackSpaceTarget(point: {
 			best = { distance: proximityDistance, value: candidate }
 	}
 	return best?.value
+}
+
+/** DOM-measuring wrapper: resolve the nearest track space to `point`. */
+export function resolveTrackSpaceTarget(point: {
+	x: number
+	y: number
+}): PaletteTrackDragTarget | undefined {
+	return resolveTrackSpaceTargetFromTargets(trackSpaceTargets(), point)
+}
+
+/** DOM-measuring wrapper: resolve the nearest toolbar space to `point`. */
+export function resolveToolbarSpaceTarget(point: {
+	x: number
+	y: number
+}): PaletteToolbarDragTarget | undefined {
+	return resolveToolbarSpaceTargetFromTargets(toolbarSpaceTargets(), point)
+}
+
+/** DOM-measuring wrapper: resolve the nearest stack space to `point` (12px halo). */
+export function resolveStackSpaceTarget(point: {
+	x: number
+	y: number
+}): PaletteStackDragTarget | undefined {
+	return resolveStackSpaceTargetFromTargets(stackSpaceTargets(), point)
+}
+
+/**
+ * Shared decision table for the three candidate targets.
+ *
+ * A contained toolbar space always wins; otherwise a contained space beats a
+ * proximity-only one; between a track and a stack that are both
+ * proximity-only, the track wins. Mirrors `docs/movements.md`.
+ */
+export function resolveDragTarget(candidates: {
+	toolbarTarget: PaletteToolbarDragTarget | undefined
+	trackTarget: PaletteTrackDragTarget | undefined
+	stackTarget: PaletteStackDragTarget | undefined
+}): PaletteDragTarget | undefined {
+	const { toolbarTarget, trackTarget, stackTarget } = candidates
+	return toolbarTarget?.contained
+		? toolbarTarget
+		: !trackTarget
+			? stackTarget
+			: !stackTarget
+				? trackTarget
+				: stackTarget.contained
+					? stackTarget
+					: trackTarget.contained
+						? trackTarget
+						: trackTarget
 }
 
 function setTargetState(
@@ -604,14 +700,14 @@ function setTargetState(
 	else delete target.element.dataset.proximity
 }
 
-function isIgnoredDropZone(target: PaletteTrackSpace, dragged: PaletteDragging): boolean {
+export function isIgnoredDropZone(target: PaletteTrackSpace, dragged: PaletteDragging): boolean {
 	if (target.track !== dragged.track) return false
 	const { index } = dragged
 	if (index < 0) return false
 	return target.index === index || target.index === index + 1
 }
 
-function isIgnoredToolbarSpace(
+export function isIgnoredToolbarSpace(
 	target: Pick<PaletteToolbarSpace, 'direction' | 'index' | 'toolbar'>,
 	dragged: PaletteDragging
 ): boolean {
@@ -621,7 +717,7 @@ function isIgnoredToolbarSpace(
 	return target.index >= preview.index && target.index <= preview.index + preview.count
 }
 
-function isIgnoredStackSpace(
+export function isIgnoredStackSpace(
 	target: PaletteStackSpace,
 	point: { x: number; y: number },
 	origin: {
@@ -780,15 +876,17 @@ function createItemDragging(
 		}
 	}
 	if (target.toolbar[target.itemIndex] !== target.item) return undefined
-	// Detach the item into an ephemeral single-item shell. The re-insertion
-	// preview runs at drag activation on the `$state`-proxied session (see
-	// `onActivate` in `paletteItemDrag`): previewing here on the still-plain
-	// session object breaks the shared ephemeral border/track references on
-	// the subsequent `palettes.dragging = dragging` proxy assignment, so the
-	// next move's preview no-ops while the removal stands and the item
-	// vanishes. A plain click (no activation) restores the item at its origin
-	// via the session `onClick`.
-	target.toolbar.splice(target.itemIndex, 1)
+	// Detach-on-activate: the item stays in its toolbar until the pointer
+	// moves past the 4px activation threshold. Detaching on pointerdown
+	// removes the item from the live layout before the drag even starts, so
+	// a plain click (or any pre-activation render) shows the tool as
+	// disappeared — and if activation then fails to re-insert (stale refs,
+	// no target), the tool is lost. The `dragging` shell is built now, but
+	// the splice runs in `onActivate` via the unproxied `live` refs (the
+	// `$state` proxy breaks `indexOf` identity and write-through on the
+	// proxied session), followed by an immediate `previewToolbarItems`
+	// re-insert at the origin index — net length unchanged, tool stays
+	// visible for the whole drag (see `onActivate` in `paletteItemDrag`).
 	const toolbar: PaletteToolbar = [target.item]
 	const track: PaletteTrack = [{ space: 0, toolbar }]
 	const border: PaletteBorder = [track]
@@ -807,6 +905,12 @@ function createItemDragging(
 		toolbar,
 		track,
 		trackIndex: 0,
+		// Pending detach: applied once, at activation, by `onActivate`.
+		pendingDetach: {
+			item: target.item,
+			toolbar: target.toolbar,
+			index: target.itemIndex,
+		},
 	}
 	return {
 		dragging,
@@ -884,17 +988,7 @@ function paletteToolbarDragApplyMove(
 		)
 			? nextStackTarget
 			: undefined
-	const resolvedTarget = toolbarTarget?.contained
-		? toolbarTarget
-		: !trackTarget
-			? stackTarget
-			: !stackTarget
-				? trackTarget
-				: stackTarget.contained
-					? stackTarget
-					: trackTarget.contained
-						? trackTarget
-						: trackTarget
+	const resolvedTarget = resolveDragTarget({ toolbarTarget, trackTarget, stackTarget })
 	for (const proximityTarget of state.proximityTargets) {
 		if (proximityTarget.element === resolvedTarget?.element) continue
 		if (proximityTarget.element === toolbarTarget?.element) continue
@@ -921,6 +1015,11 @@ function paletteToolbarDragApplyMove(
 		previewToolbarItems(dragging, resolvedTarget.toolbar, resolvedTarget.index)
 		return state.activeTarget
 	}
+	// No toolbar-space under the pointer: keep any live toolbar preview
+	// until a *contained* track/stack move commits it. Item drags detach at
+	// activation and immediately re-insert via `previewToolbarItems` in
+	// `onActivate`, so the tool is always visible inside a toolbar — there
+	// is no invisible limbo state to materialise here.
 	const competingTarget = resolvedTarget?.contained ? resolvedTarget : undefined
 	if (dragging.toolbarPreview && competingTarget) clearToolbarPreview(dragging)
 	dragging = palettes.dragging
@@ -1054,6 +1153,9 @@ function startPaletteToolbarDragSession(
 			moveState.activeTarget = undefined
 			dragStart = undefined
 			if (!activated) {
+				// Never detached (detach-on-activate): drop any pending detach
+				// so a re-used session object can't splice late.
+				if (dragging.pendingDetach) delete dragging.pendingDetach
 				if (snapshot.reason === 'up' || snapshot.reason === 'buttons') options?.onClick?.()
 				return
 			}
@@ -1267,17 +1369,7 @@ function updatePaletteCatalogNativeDropHighlight(point: { x: number; y: number }
 	const toolbarTarget = resolveToolbarSpaceTarget(point)
 	const trackTarget = resolveTrackSpaceTarget(point)
 	const stackTarget = resolveStackSpaceTarget(point)
-	const resolvedTarget = toolbarTarget?.contained
-		? toolbarTarget
-		: !trackTarget
-			? stackTarget
-			: !stackTarget
-				? trackTarget
-				: stackTarget.contained
-					? stackTarget
-					: trackTarget.contained
-						? trackTarget
-						: trackTarget
+	const resolvedTarget = resolveDragTarget({ toolbarTarget, trackTarget, stackTarget })
 	const candidates = [toolbarTarget, trackTarget, stackTarget].filter(
 		(candidate): candidate is PaletteDragTarget => Boolean(candidate)
 	)
@@ -1394,16 +1486,28 @@ export function paletteTrackSpace(
 	element: HTMLElement,
 	target: PaletteTrackSpace | undefined
 ): ReturnType<Action> {
-	if (!target?.palette) return
+	// The component rebuilds `target` every render (fresh object identity),
+	// so the action must refresh the registered meta on param updates —
+	// otherwise hit-testing keeps resolving stale border/track/index
+	// references after the first reorder (repeat-move goes dead).
+	let current = target
+	if (!current?.palette) return
 	ensureCatalogWindowListeners()
 	trackSpaces.add(element)
-	trackSpaceMeta.set(element, target)
-	const stopCatalog = bindPaletteCatalogDrop(element, target.palette, (item, event) => {
-		const split = splitCatalogDropClient(event, element, target.direction)
+	trackSpaceMeta.set(element, current)
+	const palette = current.palette
+	const stopCatalog = bindPaletteCatalogDrop(element, palette, (item, event) => {
+		if (!current) return
+		const split = splitCatalogDropClient(event, element, current.direction)
 		const toolbar: PaletteToolbar = [item]
-		insertToolbar(target.track, target.index, toolbar, split)
+		insertToolbar(current.track, current.index, toolbar, split)
 	})
 	return {
+		update(next: PaletteTrackSpace | undefined) {
+			current = next
+			if (current) trackSpaceMeta.set(element, current)
+			else trackSpaces.delete(element)
+		},
 		destroy() {
 			stopCatalog()
 			delete element.dataset.active
@@ -1417,15 +1521,26 @@ export function paletteStackSpace(
 	element: HTMLElement,
 	target: PaletteStackSpace | undefined
 ): ReturnType<Action> {
-	if (!target?.palette) return
+	// Same staleness contract as `paletteTrackSpace`: refresh the registered
+	// meta on every param update so hit-testing never resolves a pre-reorder
+	// border/index.
+	let current = target
+	if (!current?.palette) return
 	ensureCatalogWindowListeners()
 	stackSpaces.add(element)
-	stackSpaceMeta.set(element, target)
-	const stopCatalog = bindPaletteCatalogDrop(element, target.palette, (item) => {
+	stackSpaceMeta.set(element, current)
+	const palette = current.palette
+	const stopCatalog = bindPaletteCatalogDrop(element, palette, (item) => {
+		if (!current) return
 		const toolbar: PaletteToolbar = [item]
-		insertTrackWithToolbar(target.border, target.index, toolbar)
+		insertTrackWithToolbar(current.border, current.index, toolbar)
 	})
 	return {
+		update(next: PaletteStackSpace | undefined) {
+			current = next
+			if (current) stackSpaceMeta.set(element, current)
+			else stackSpaces.delete(element)
+		},
 		destroy() {
 			stopCatalog()
 			delete element.dataset.active
@@ -1439,14 +1554,25 @@ export function paletteToolbarSpace(
 	element: HTMLElement,
 	target: PaletteToolbarSpace | undefined
 ): ReturnType<Action> {
-	if (!target?.palette) return
+	// Same staleness contract as `paletteTrackSpace`: refresh the registered
+	// meta on every param update so the merge preview splices into the live
+	// toolbar/index, not the pre-reorder snapshot.
+	let current = target
+	if (!current?.palette) return
 	ensureCatalogWindowListeners()
 	toolbarSpaces.add(element)
-	toolbarSpaceMeta.set(element, target)
-	const stopCatalog = bindPaletteCatalogDrop(element, target.palette, (item) => {
-		target.toolbar.splice(target.index, 0, item)
+	toolbarSpaceMeta.set(element, current)
+	const palette = current.palette
+	const stopCatalog = bindPaletteCatalogDrop(element, palette, (item) => {
+		if (!current) return
+		current.toolbar.splice(current.index, 0, item)
 	})
 	return {
+		update(next: PaletteToolbarSpace | undefined) {
+			current = next
+			if (current) toolbarSpaceMeta.set(element, current)
+			else toolbarSpaces.delete(element)
+		},
 		destroy() {
 			stopCatalog()
 			delete element.dataset.active
@@ -1460,18 +1586,27 @@ export function paletteToolbarDrag(
 	element: HTMLElement,
 	target: PaletteToolbarDrag | undefined
 ): ReturnType<Action> {
-	if (!target) return
+	// Same staleness contract as the space actions: the component rebuilds
+	// `target` every render, so refresh the pointerdown closure's target on
+	// param updates — otherwise the second drag grabs the pre-reorder
+	// border/track/toolbar and the move silently no-ops.
+	let current = target
+	if (!current) return
 	const onPointerDown = (event: PointerEvent) => {
-		if (!target?.palette) return
-		if (!target.palette.editing) return
+		const live = current
+		if (!live?.palette) return
+		if (!live.palette.editing) return
 		if (event.button !== 0) return
 		if (isEditableTarget(event.target)) return
-		const dragging = createToolbarDragging(target)
+		const dragging = createToolbarDragging(live)
 		if (!dragging) return
-		startPaletteToolbarDragSession(element, target, event, dragging)
+		startPaletteToolbarDragSession(element, live, event, dragging)
 	}
 	element.addEventListener('pointerdown', onPointerDown)
 	return {
+		update(next: PaletteToolbarDrag | undefined) {
+			current = next
+		},
 		destroy() {
 			element.removeEventListener('pointerdown', onPointerDown)
 		},
@@ -1482,50 +1617,71 @@ export function paletteItemDrag(
 	element: HTMLElement,
 	target: PaletteItemDragTarget | undefined
 ): ReturnType<Action> {
-	if (!target) return
+	// Same staleness contract as the space actions: refresh the closure's
+	// target on param updates so the second drag detaches from the live
+	// toolbar/index, not the pre-reorder snapshot.
+	let current = target
+	if (!current) return
 	const onPointerDown = (event: PointerEvent) => {
-		if (!target.palette.editing) return
+		const live = current
+		if (!live) return
+		if (!live.palette.editing) return
 		if (event.button !== 0) return
 		event.stopPropagation()
 		palettes.inspecting = {
-			item: target.item,
-			palette: target.palette,
-			region: target.region,
+			item: live.item,
+			palette: live.palette,
+			region: live.region,
+			toolbar: live.toolbar,
+			track: live.track,
+			border: live.border,
+			trackIndex: live.trackIndex,
 		}
 		const origin = {
-			border: target.border,
-			index: target.itemIndex,
-			region: target.region,
-			toolbar: target.toolbar,
-			track: target.track,
-			trackIndex: target.trackIndex,
+			border: live.border,
+			index: live.itemIndex,
+			region: live.region,
+			toolbar: live.toolbar,
+			track: live.track,
+			trackIndex: live.trackIndex,
 		} satisfies PaletteDragOrigin
-		const drag = createItemDragging(target)
+		const drag = createItemDragging(live)
 		if (!drag) return
 		const sessionElement =
-			drag.dragging.toolbar === target.toolbar
+			drag.dragging.toolbar === live.toolbar
 				? (element.closest<HTMLElement>('.toolbar') ?? element)
 				: element
-		// The item detaches on pointerdown (see `createItemDragging`) but the
-		// re-insertion preview is deferred to activation, where the session
-		// is already `$state`-proxied and the ephemeral border/track
-		// references stay consistent. A plain click (no activation) restores
-		// the item at its origin instead.
-		const detachedItem = target.item
-		const detachedToolbar = target.toolbar
-		const detachedIndex = target.itemIndex
+		// Detach-on-activate: the splice runs once, at activation, via the
+		// unproxied `live` refs (see `createItemDragging`). A plain click (no
+		// activation) never detached, so `onClick` is a no-op safety net
+		// instead of a restore.
 		startPaletteToolbarDragSession(sessionElement, drag.target, event, drag.dragging, {
 			origin,
 			onActivate: (active) => {
-				previewToolbarItems(active, detachedToolbar, detachedIndex)
+				// Detach via the unproxied `live` refs: `$state` deep-proxies
+				// the session on assignment, so `indexOf`/`splice` through the
+				// proxied `active.pendingDetach` misses and write-through
+				// fails. The origin arrays are plain, so identity holds here.
+				// Then preview re-inserts the item at its origin index — net
+				// length unchanged, tool stays visible for the whole drag.
+				if (active.pendingDetach) delete active.pendingDetach
+				const at = live.toolbar.indexOf(live.item)
+				const idx = at >= 0 ? at : live.itemIndex
+				if (idx >= 0 && idx < live.toolbar.length) live.toolbar.splice(idx, 1)
+				previewToolbarItems(active, live.toolbar, live.itemIndex)
 			},
 			onClick: () => {
-				detachedToolbar.splice(detachedIndex, 0, detachedItem)
+				const pending = drag.dragging.pendingDetach
+				if (pending) {
+					delete drag.dragging.pendingDetach
+					// Never detached (activation never ran): nothing to restore.
+					return
+				}
 			},
 			onMoved: () => {
 				if (
-					palettes.inspecting?.palette === target.palette &&
-					palettes.inspecting?.item === target.item
+					palettes.inspecting?.palette === live.palette &&
+					palettes.inspecting?.item === live.item
 				)
 					delete palettes.inspecting
 			},
@@ -1534,6 +1690,9 @@ export function paletteItemDrag(
 
 	element.addEventListener('pointerdown', onPointerDown)
 	return {
+		update(next: PaletteItemDragTarget | undefined) {
+			current = next
+		},
 		destroy() {
 			element.removeEventListener('pointerdown', onPointerDown)
 		},

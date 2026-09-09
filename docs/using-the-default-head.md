@@ -22,12 +22,16 @@ lacks — a play/rating row). Together they prove both replacement and extension
 | number | `stepper` | `sliderPresenter` | `head/editors/StepperEditor.svelte` |
 | item | `commandBox` | `commandBoxPresenter` | `head/editors/CommandBoxEditor.svelte` |
 | item | `drawer` | — (core portal) | `palette/components/DrawerEditor.svelte` (reused, not duplicated) |
+| status | `status` | `statusPresenter` | `head/editors/StatusEditor.svelte` |
 
 Notes:
 
 - The `commandBox` editor is a real **commands-combo-box** (text input + results popup,
   Ctrl-Shift-P style): it runs commands inline on the toolbar. Running commands does *not*
   require the console; the console is a separate modal for edition (and command-first fallback).
+- The `status` editor is a **passive read-only readout** (a `<span>`, no interaction): it
+  renders a status tool's `value` (e.g. the demo's mission clock). It launches nothing and is
+  never editable.
 
 - `segmented` is the "radio-button" idiom: joined buttons where the selected one
   reads as pushed-in. `select` is the compact dropdown. Both are enum editors.

@@ -32,6 +32,7 @@ Presenter cheat-sheet:
 | enum | `selectPresenter(context)` | `{ title, tone, icon, value, options[{value,text}], select }` |
 | number | `sliderPresenter(context)` | `{ title, tone, icon, direction, region, min, max, step, value, set }` |
 | item | `commandBoxPresenter({ context })` | `{ title, icon, label, hint, model }` — `model` is a `paletteCommandBoxModel` (combobox) |
+| status | `statusPresenter(context)` | `{ label, icon, title, tone, value }` (read-only, no interaction) |
 | any | `configuratorPresenter(context)` | `{ label, icon, hint, tone, editor, editorChoices, setText, setTone, setEditor }` |
 
 Helpers: `headMeta(item)` (config defaults), `headTooltip(item, suffix)`,

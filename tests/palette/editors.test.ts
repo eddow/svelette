@@ -7,13 +7,17 @@ import SegmentedEditor from '$lib/head/editors/SegmentedEditor.svelte'
 import SelectEditor from '$lib/head/editors/SelectEditor.svelte'
 import StepperEditor from '$lib/head/editors/StepperEditor.svelte'
 import ToggleEditor from '$lib/head/editors/ToggleEditor.svelte'
+import { configuratorPresenter } from '$lib/palette/core.svelte'
+import { removePaletteItem } from '$lib/palette/edition.svelte'
 import type {
+	PaletteBorder,
 	PaletteEditorContext,
 	PaletteSchema,
 	PaletteToolBool,
 	PaletteToolbarItem,
 	PaletteToolEnum,
 	PaletteToolNumber,
+	PaletteTrack,
 } from '$lib/palette/types'
 
 describe('head editors', () => {
@@ -153,6 +157,84 @@ describe('head editors', () => {
 			'flip',
 			'select',
 		])
+	})
+
+	describe('G2 headless removal', () => {
+		it('removePaletteItem splices the item and keeps siblings', () => {
+			const keep = { tool: 'keep' }
+			const doomed = { tool: 'doomed' }
+			const toolbar = [keep, doomed]
+			const track: PaletteTrack = [{ space: 0, toolbar }]
+			const border: PaletteBorder = [track]
+			expect(removePaletteItem(doomed, toolbar, track, border)).toBe(true)
+			expect(toolbar).toEqual([keep])
+			expect(border).toHaveLength(1)
+		})
+
+		it('removePaletteItem prunes the emptied toolbar and track', () => {
+			const solo = { tool: 'solo' }
+			const toolbar = [solo]
+			const track: PaletteTrack = [{ space: 0, toolbar }]
+			const border: PaletteBorder = [track]
+			expect(removePaletteItem(solo, toolbar, track, border)).toBe(true)
+			expect(toolbar).toHaveLength(0)
+			expect(border).toHaveLength(0)
+		})
+
+		it('removePaletteItem returns false for an unknown item', () => {
+			const toolbar = [{ tool: 'a' }]
+			const track: PaletteTrack = [{ space: 0, toolbar }]
+			const border: PaletteBorder = [track]
+			expect(removePaletteItem({ tool: 'ghost' }, toolbar, track, border)).toBe(false)
+			expect(toolbar).toHaveLength(1)
+			expect(border).toHaveLength(1)
+		})
+
+		it('configuratorPresenter.remove() deletes via the live location', () => {
+			const first = { tool: 'a' }
+			const second = { tool: 'b' }
+			const toolbar = [first, second]
+			const track: PaletteTrack = [{ space: 0, toolbar }]
+			const border: PaletteBorder = [track]
+			const context = {
+				item: first,
+				tool: undefined,
+				scope: {},
+				flags: {},
+			} as PaletteEditorContext
+			const view = configuratorPresenter(context, { toolbar, track, border })
+			expect(view.removable).toBe(true)
+			expect(view.remove()).toBe(true)
+			expect(toolbar).toEqual([second])
+		})
+
+		it('configuratorPresenter.remove() no-ops without a location', () => {
+			const context = {
+				item: { tool: 'a' },
+				tool: undefined,
+				scope: {},
+				flags: {},
+			} as PaletteEditorContext
+			expect(configuratorPresenter(context).remove()).toBe(false)
+		})
+
+		it('BaseConfigurator delete button removes the item from its toolbar', async () => {
+			const first: PaletteToolbarItem = { tool: 'a', editor: 'toggle' }
+			const second: PaletteToolbarItem = { tool: 'b', editor: 'toggle' }
+			const toolbar = [first, second]
+			const track: PaletteTrack = [{ space: 0, toolbar }]
+			const border: PaletteBorder = [track]
+			const context = {
+				item: first,
+				tool: undefined,
+				scope: { toolbar, track, border },
+				flags: {},
+			} as unknown as PaletteEditorContext
+			render(BaseConfigurator, { props: { context } })
+			await fireEvent.click(screen.getByTestId('configurator-delete'))
+			expect(toolbar).toEqual([second])
+			expect(border).toHaveLength(1)
+		})
 	})
 
 	it('Demo SliderEditor overrides the head slider and mutates via the presenter', async () => {

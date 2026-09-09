@@ -35,6 +35,8 @@ export type DemoState = {
 	taxRate: number
 	solarEfficiency: number
 	satisfaction: number
+	/** Mission launch elapsed time, formatted `mm:ss`, ticked by the clock status tool. */
+	missionElapsed: string
 	lastAction: string
 }
 
@@ -55,6 +57,7 @@ const colonyDefaults = {
 export const demoState = $state<DemoState>({
 	...colonyDefaults,
 	theme: 'system',
+	missionElapsed: '00:00',
 	lastAction: 'Ready',
 })
 
@@ -316,6 +319,16 @@ export const demoPalette: Palette = new Palette({
 			// the key binding (`` ` `` → `console`) is pure config below.
 			...consoleTool({ label: 'Developer Console', icon: '💻' }),
 		},
+		missionClock: {
+			type: 'status',
+			label: 'Mission time',
+			icon: '⏱️',
+			categories: ['simulation'],
+			keywords: ['clock', 'elapsed', 'uptime', 'timer', 'mission'],
+			get value() {
+				return demoState.missionElapsed
+			},
+		},
 	},
 	keys: {
 		'`': 'console',
@@ -342,12 +355,14 @@ export const demoPalette: Palette = new Palette({
 		number: { ...headEditors.number, ...demoEditors.number },
 		item: { ...headEditors.item, ...demoEditors.item },
 		run: { ...headEditors.run, ...demoEditors.run },
+		status: { ...headEditors.status },
 	} as never,
 	editorDefaults: {
 		run: 'button',
 		boolean: 'toggle',
 		enum: 'select',
 		number: 'slider',
+		status: 'status',
 	},
 })
 
@@ -482,6 +497,10 @@ const rwComboboxLayout: PaletteBorders = {
 						tool: 'fastMode',
 						editor: 'toggle',
 						config: { icon: '⚡', label: 'Hyper-tick', hint: 'Compact icon toggle' },
+					},
+					{
+						tool: 'missionClock',
+						config: { icon: '⏱️', label: 'Mission time', hint: 'Status tool (passive readout)' },
 					},
 				],
 			},

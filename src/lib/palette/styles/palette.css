@@ -152,9 +152,22 @@
 	min-inline-size: 0;
 }
 
-.toolbar-track-space[data-active='true'] {
+.toolbar-track-space[data-active='true'],
+.toolbar-track-space[data-proximity='true'] {
 	background: rgba(59, 130, 246, 0.16);
 	box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.55);
+}
+
+/* G1 uniform halo: track spaces mini-expand like stack/item spaces so the
+ * near-enough affordance is identical for every slot kind. */
+.toolbar-border.palette-horizontal .toolbar-track-space[data-proximity='true'],
+.palette-parking.palette-horizontal .toolbar-track-space[data-proximity='true'] {
+	min-inline-size: 8px;
+}
+
+.toolbar-border.palette-vertical .toolbar-track-space[data-proximity='true'],
+.palette-parking.palette-vertical .toolbar-track-space[data-proximity='true'] {
+	min-block-size: 8px;
 }
 
 .toolbar-border.stack-vertical .toolbar-stack-space[data-proximity='true'],

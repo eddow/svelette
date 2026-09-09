@@ -47,6 +47,7 @@ import type {
 	PaletteRegion,
 	PaletteSchema,
 	PaletteScope,
+	PaletteStatusTool,
 	PaletteSurfaceContext,
 	PaletteTool,
 	PaletteToolbar,
@@ -59,6 +60,7 @@ import type {
 	PaletteToolRun,
 	PaletteTools,
 	PaletteToolToolbarItem,
+	PaletteTrack,
 	SerializedPaletteLayout,
 } from './types'
 
@@ -592,6 +594,7 @@ export const paletteDefaultEditorCapabilities: Record<string, PaletteEditorCapab
 	},
 	commandBox: { id: 'commandBox', label: 'Command box', families: ['item'], supportedAxes: 'both' },
 	drawer: { id: 'drawer', label: 'Drawer', families: ['item'], supportedAxes: 'both' },
+	status: { id: 'status', label: 'Status', families: ['status'], supportedAxes: 'both' },
 }
 
 const returnValues = new WeakMap<PaletteToolEdit<unknown>, unknown>()
@@ -687,12 +690,21 @@ export function isRunTool<TTools extends PaletteTools>(
 }
 
 /**
+ * Type guard for passive status tools (`type: 'status'`, no `run()`, no `default`).
+ */
+export function isStatusTool<TTools extends PaletteTools>(
+	tool: PaletteTool<TTools>
+): tool is Extract<PaletteTool<TTools>, PaletteStatusTool> {
+	return 'type' in tool && tool.type === 'status'
+}
+
+/**
  * Type guard for editable palette tools.
  */
 export function isEditableTool<TTools extends PaletteTools>(
 	tool: PaletteTool<TTools>
 ): tool is PaletteEditableTool<TTools> {
-	return 'type' in tool
+	return 'type' in tool && tool.type !== 'status'
 }
 
 /**
@@ -702,7 +714,7 @@ export function paletteToolFamily<TTools extends PaletteTools>(
 	tool: PaletteTool<TTools>
 ): PaletteToolFamily<TTools> {
 	return (
-		isRunTool(tool) ? 'run' : (tool as PaletteEditableTool<TTools>).type
+		isRunTool(tool) ? 'run' : (tool as PaletteEditableTool<TTools> | PaletteStatusTool).type
 	) as PaletteToolFamily<TTools>
 }
 
@@ -760,6 +772,21 @@ export function renderPaletteConfigurator<
 	scope: PaletteScope<TSchema>
 ): PaletteConfiguratorComponent<TTool, TItem, TSchema> | undefined {
 	return palette.renderConfigurator(item, tool, scope)
+}
+
+/**
+ * Compute a headless configuration descriptor for a toolbar item.
+ *
+ * Standalone wrapper over `Palette.describeItemConfiguration`, mirroring the
+ * reference `describePaletteItemConfiguration` helper. Adapters consume the
+ * descriptor to render item configuration UI; the palette owns the semantics.
+ */
+export function describePaletteItemConfiguration<TSchema extends PaletteSchema>(
+	palette: PaletteOf<TSchema>,
+	target: PaletteConfiguredItemTarget,
+	surface: PaletteSurfaceContext
+): PaletteItemConfigurationDescriptor {
+	return palette.describeItemConfiguration(target, surface)
 }
 
 /**
@@ -858,6 +885,10 @@ export const palettes = $state<{
 		item: PaletteToolbarItem
 		palette: PaletteBase
 		region?: PaletteRegion
+		toolbar?: PaletteToolbar
+		track?: PaletteTrack
+		border?: PaletteBorder
+		trackIndex?: number
 	}
 }>({})
 

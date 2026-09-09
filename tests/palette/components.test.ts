@@ -362,6 +362,34 @@ describe('paletteRoot', () => {
 		expect(document.querySelector('#parked-run')).toBeNull()
 	})
 
+	it('G3: parking bound to a live border removes from the real border', async () => {
+		const palette = new Palette({
+			tools: {
+				run: {
+					get can() {
+						return true
+					},
+					run() {},
+				},
+			},
+			keys: {
+				N: 'run',
+			},
+			editor: () => ParkingEditorStub as never,
+		} satisfies PaletteConfig)
+		palettes.editing = palette
+		const liveToolbar = [{ tool: 'run' }]
+		const liveTrack = [{ space: 0, toolbar: liveToolbar }]
+		const liveBorder = [liveTrack]
+		render(ParkingProbe, { props: { palette, toolbars: [], border: liveBorder } })
+		expect(document.querySelector('#parked-run')).toBeTruthy()
+		await fireEvent.click(document.querySelector<HTMLButtonElement>('.palette-parking-remove')!)
+		// The live border — not a local copy — is pruned. (The plain test
+		// array is not `$state`-reactive, so the DOM row lingers here; in the
+		// app `top` is `$state` and the row disappears with the splice.)
+		expect(liveBorder).toHaveLength(0)
+	})
+
 	it('exposes paletteRoot and paletteItemDrag as actions', () => {
 		expect(typeof paletteRoot).toBe('function')
 		expect(typeof paletteItemDrag).toBe('function')

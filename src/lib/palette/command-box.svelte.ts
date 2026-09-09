@@ -18,6 +18,7 @@ import {
 	hasPaletteItemTool,
 	isEditableTool,
 	isRunTool,
+	isStatusTool,
 	PaletteError,
 	paletteEnumValueKeywords,
 	paletteTool,
@@ -297,6 +298,8 @@ export function paletteAddItemEntries<TSchema extends PaletteSchema>(options: {
 		if (excluded.has(toolId)) continue
 		// Runnable commands are listed in `paletteCommandEntries` (drag spec by id); add-item sources are only for editable tools.
 		if (isRunTool(tool)) continue
+		// Status tools are passive indicators — never addable/editable.
+		if (isStatusTool(tool)) continue
 		if (isEditableTool(tool) && tool.type === 'enum' && tool.commandBoxEnumCommands !== 'per-value')
 			continue
 		const toolLabel = tool.label ?? humanizeCommandText(toolId)

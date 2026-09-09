@@ -68,19 +68,18 @@
 		root.style.colorScheme = resolvedTheme
 	})
 
-	// Elapsed time since demo launch (mm:ss) — the custom bottom-bar readout
-	// from the demo plan, rendered as a chip in the work-zone.
-	let elapsed = $state(0)
+	// Mission clock (mm:ss) — ticks `demoState.missionElapsed`, which the passive
+// `missionClock` status tool reads. Rendered by the status editor in the bottom
+// toolbar AND by the work-zone chip.
 	onMount(() => {
 		const started = Date.now()
 		const timer = setInterval(() => {
-			elapsed = Math.floor((Date.now() - started) / 1000)
+			const elapsed = Math.floor((Date.now() - started) / 1000)
+			demoState.missionElapsed =
+				`${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
 		}, 1000)
 		return () => clearInterval(timer)
 	})
-	const elapsedText = $derived(
-		`${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
-	)
 	// Restore a saved layout client-side after mount: SSR always renders the
 	// initial layout (no hydration mismatch), then the stored borders are
 	// spliced into the existing `$state` proxies. `hydratePaletteLayout` can't
@@ -181,7 +180,7 @@
 						>Space colony management sim — every colony variable below is bound to a toolbar editor.</span
 					>
 				</div>
-				<div class="demo-chip" data-testid="elapsed">⏱ {elapsedText}</div>
+				<div class="demo-chip" data-testid="elapsed">⏱ {demoState.missionElapsed}</div>
 			</div>
 			<div class="demo-strip">
 				<span class="demo-pill">💨 {demoState.autoOxygen ? 'O₂ on' : 'O₂ off'}</span>

@@ -25,6 +25,7 @@ import CommandBoxEditor from './editors/CommandBoxEditor.svelte'
 import SegmentedEditor from './editors/SegmentedEditor.svelte'
 import SelectEditor from './editors/SelectEditor.svelte'
 import SliderEditor from './editors/SliderEditor.svelte'
+import StatusEditor from './editors/StatusEditor.svelte'
 import StepperEditor from './editors/StepperEditor.svelte'
 import ToggleEditor from './editors/ToggleEditor.svelte'
 
@@ -65,6 +66,9 @@ export const headEditors = {
 		commandBox: spec(CommandBoxEditor, BaseConfigurator, 'horizontal'),
 		drawer: spec(DrawerEditor, BaseConfigurator, 'horizontal'),
 	},
+	status: {
+		status: spec(StatusEditor, BaseConfigurator, 'horizontal'),
+	},
 	run: {
 		button: spec(ButtonEditor, BaseConfigurator, 'horizontal'),
 	},
@@ -87,8 +91,10 @@ export {
 	type SelectOption,
 	type SelectPresenter,
 	type SliderPresenter,
+	type StatusPresenter,
 	selectPresenter,
 	sliderPresenter,
+	statusPresenter,
 	type TogglePresenter,
 	togglePresenter,
 } from '$lib/palette/presenters.svelte'
