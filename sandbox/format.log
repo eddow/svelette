@@ -1,0 +1,5 @@
+
+> svelette@0.0.1 format
+> biome format --write .
+
+Formatted 45 files in 13ms. Fixed 2 files.

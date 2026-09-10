@@ -1,0 +1,5 @@
+
+> svelette@0.0.1 lint
+> biome check .
+
+Checked 81 files in 81ms. No fixes applied.

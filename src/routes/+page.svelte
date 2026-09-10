@@ -69,14 +69,13 @@
 	})
 
 	// Mission clock (mm:ss) — ticks `demoState.missionElapsed`, which the passive
-// `missionClock` status tool reads. Rendered by the status editor in the bottom
-// toolbar AND by the work-zone chip.
+	// `missionClock` status tool reads. Rendered by the status editor in the bottom
+	// toolbar AND by the work-zone chip.
 	onMount(() => {
 		const started = Date.now()
 		const timer = setInterval(() => {
 			const elapsed = Math.floor((Date.now() - started) / 1000)
-			demoState.missionElapsed =
-				`${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
+			demoState.missionElapsed = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
 		}, 1000)
 		return () => clearInterval(timer)
 	})
@@ -227,6 +226,7 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		min-height: 100vh;
+		block-size: 100dvh;
 		font-family: system-ui, sans-serif;
 		background: #020617;
 		color: #e2e8f0;
@@ -235,6 +235,17 @@
 	:global(html[data-theme='light']) main {
 		background: #f1f5f9;
 		color: #0f172a;
+	}
+	:global(html),
+	:global(body) {
+		block-size: 100%;
+	}
+	:global(body) {
+		margin: 0;
+	}
+	:global(main > .palette-ide) {
+		flex: 1 1 auto;
+		min-block-size: 0;
 	}
 	.demo-bar {
 		display: flex;

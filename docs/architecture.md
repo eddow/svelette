@@ -376,7 +376,7 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   `paletteAddItemEntries`) render draggable rows — the single drag surface. Native HTML5 drags
   (`PALETTE_CATALOG_DRAG_MIME` + `serializePaletteCatalogDragPayload` on `dataTransfer`,
   `beginPaletteCatalogInsertDrag` + `notifyPaletteCatalogNativeDragStarted` on `dragstart`);
-  drops land in the existing `bindPaletteCatalogDrop` toolbar/track/stack zones.
+  drops land in the existing `bindPaletteCatalogDrop` toolbar/track/stack zones.catalog
 - `Parking` renders at the top of the console, seeded from the live top border minus the
   command-box item (mirrors the reference `popupParkingToolbars`); parked toolbars can be
   removed/restored through the parking drop zones while editing.

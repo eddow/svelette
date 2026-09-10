@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-	beginPaletteCatalogInsertDrag,
 	Palette,
 	paletteItemDrag,
 	paletteItemShield,
@@ -32,30 +31,10 @@ function testPalette(run: () => void): Palette {
 	})
 }
 
-describe('catalogue insert session', () => {
-	afterEach(() => {
-		palettes.catalogDrag = undefined
-		palettes.dragging = undefined
-	})
-
-	it('tags the ephemeral shell so drop-after-move skips a second insert', () => {
-		const palette = testPalette(() => {})
-		const item = { tool: 'run' as const, editor: 'button' as const, config: {} }
-		beginPaletteCatalogInsertDrag(palette, item as never)
-		const session = palettes.dragging
-		expect(session?.catalogInsert).toBe(true)
-		// `$state` deep-proxies the session, so the seed border and `border`
-		// are equal proxies of the same array, not `===` identical.
-		expect(session?.catalogInsertSeedBorder).toStrictEqual(session?.border)
-	})
-})
-
 describe('paletteRoot', () => {
 	afterEach(() => {
 		document.body.replaceChildren()
-		palettes.catalogDrag = undefined
 		palettes.editing = undefined
-		palettes.dragging = undefined
 		palettes.inspecting = undefined
 	})
 
@@ -151,7 +130,7 @@ describe('paletteRoot', () => {
 		expect(event.defaultPrevented).toBe(false)
 	})
 
-	it('reflects editing and dragging state on the root element', async () => {
+	it('reflects editing state on the root element', async () => {
 		const run = vi.fn()
 		const palette = testPalette(run)
 		render(PaletteRootProbe, { props: { palette } })
@@ -161,29 +140,9 @@ describe('paletteRoot', () => {
 		await Promise.resolve()
 		expect(root.dataset.editing).toBe('true')
 		expect(root.classList.contains('palette-editing')).toBe(true)
-
-		palettes.dragging = {
-			border: [],
-			createdTracks: [],
-			index: 0,
-			palette,
-			region: 'top',
-			sourceItems: [],
-			sourceBorder: [],
-			sourceRegion: 'top',
-			sourceTrack: [],
-			sourceTrackIndex: 0,
-			sourceTrackWasSingleton: false,
-			toolbar: [],
-			track: [],
-			trackIndex: 0,
-		}
-		await Promise.resolve()
-		expect(root.dataset.dragging).toBe('true')
-		expect(root.classList.contains('palette-dragging')).toBe(true)
 	})
 
-	it('clicks an item to inspect it without entering dragging state', async () => {
+	it('clicks an item to inspect it (no movement yet)', async () => {
 		const firstItem = { tool: 'run' }
 		const secondItem = { tool: 'run' }
 		const toolbar = [firstItem, secondItem]
@@ -231,13 +190,12 @@ describe('paletteRoot', () => {
 			})
 		)
 
-		expect(palettes.dragging).toBeUndefined()
 		// `$state` proxies `inspecting.item`, so identity is structural.
 		expect(palettes.inspecting?.palette).toBe(palette)
 		expect(palettes.inspecting?.item).toStrictEqual(firstItem)
 	})
 
-	it('keeps an item inspected when drag activates without moving it elsewhere', async () => {
+	it('keeps an item inspected on pointer moves (no movement yet)', async () => {
 		const firstItem = { tool: 'run' }
 		const secondItem = { tool: 'run' }
 		const toolbar = [firstItem, secondItem]
@@ -299,7 +257,6 @@ describe('paletteRoot', () => {
 			})
 		)
 
-		expect(palettes.dragging).toBeUndefined()
 		expect(palettes.inspecting?.palette).toBe(palette)
 		expect(palettes.inspecting?.item).toStrictEqual(firstItem)
 	})

@@ -814,120 +814,17 @@ export interface Palette<TSchema extends PaletteSchema = PaletteSchema> {
 }
 
 /**
- * Shared drag session state used by the palette layout components while editing.
+ * Simulated drag session state (movement restart, no real dragging yet).
+ *
+ * Centralised on `palettes.dragging`: a click on a tool selects that single
+ * tool, a click on a toolbar selects its whole content. For now the selection
+ * is only logged — no preview, no commit.
  */
 export interface PaletteDragging<TPalette extends Palette = Palette> {
-	/** The border layout. */
-	border: TPalette extends Palette<infer TSchema>
-		? PaletteBorder<PaletteItem<TSchema>>
-		: PaletteBorder
-	/** The created tracks. */
-	createdTracks: TPalette extends Palette<infer TSchema>
-		? PaletteTrack<PaletteItem<TSchema>>[]
-		: PaletteTrack[]
-	/** The index of the current track. */
-	index: number
 	/** The palette instance. */
 	palette: TPalette
-	/** The docking region. */
-	region: PaletteRegion
-	/** The source items. */
-	sourceItems: TPalette extends Palette<infer TSchema>
-		? PaletteToolbar<PaletteItem<TSchema>>
-		: PaletteToolbar
-	/** The source border layout. */
-	sourceBorder: TPalette extends Palette<infer TSchema>
-		? PaletteBorder<PaletteItem<TSchema>>
-		: PaletteBorder
-	/** The source docking region. */
-	sourceRegion: PaletteRegion
-	/** The source track. */
-	sourceTrack: TPalette extends Palette<infer TSchema>
-		? PaletteTrack<PaletteItem<TSchema>>
-		: PaletteTrack
-	/** The index of the source track. */
-	sourceTrackIndex: number
-	/** Whether the source track was a singleton. */
-	sourceTrackWasSingleton: boolean
-	/** The toolbar. */
-	toolbar: TPalette extends Palette<infer TSchema>
-		? PaletteToolbar<PaletteItem<TSchema>>
-		: PaletteToolbar
-	/**
-	 * Whether the drag unit is the **whole** toolbar (grabbed via the toolbar
-	 * chrome). Whole-toolbar drags move every item together and never merge
-	 * into another toolbar (`isIgnoredToolbarSpace` bails) — they must land in
-	 * a track/stack space. Item drags are `false` (unset) and may merge.
-	 */
-	wholeToolbar?: boolean
-	/**
-	 * Pending detach for item drags (detach-on-activate).
-	 *
-	 * `createItemDragging` builds the ephemeral shell up-front but must NOT
-	 * splice the item out of the live toolbar until the pointer starts moving
-	 * — otherwise a plain click (or any pre-activation render) shows the tool
-	 * as disappeared. `onActivate` consumes this exactly once (splice +
-	 * preview); `onClick`/abandon paths leave the toolbar untouched when it is
-	 * still pending.
-	 */
-	pendingDetach?: {
-		/** The item to detach. */
-		item: TPalette extends Palette<infer TSchema> ? PaletteItem<TSchema> : PaletteToolbarItem
-		toolbar: TPalette extends Palette<infer TSchema>
-			? PaletteToolbar<PaletteItem<TSchema>>
-			: PaletteToolbar
-		/** The index of the detached item within the toolbar. */
-		index: number
-	}
-	/** Optional toolbar preview. */
-	toolbarPreview?: {
-		/** The count of items in the preview. */
-		count: number
-		/** The index of the preview. */
-		index: number
-		/** The source border layout. */
-		source: {
-			/** The border layout. */
-			border: TPalette extends Palette<infer TSchema>
-				? PaletteBorder<PaletteItem<TSchema>>
-				: PaletteBorder
-			/** Whether the track was removed. */
-			removedTrack: boolean
-			/** The track. */
-			track: TPalette extends Palette<infer TSchema>
-				? PaletteTrack<PaletteItem<TSchema>>
-				: PaletteTrack
-			/** The index of the track. */
-			trackIndex: number
-			/** The snapshot of the track. */
-			snapshot: TPalette extends Palette<infer TSchema>
-				? PaletteTrack<PaletteItem<TSchema>>
-				: PaletteTrack
-		}
-		/** The toolbar. */
-		toolbar: TPalette extends Palette<infer TSchema>
-			? PaletteToolbar<PaletteItem<TSchema>>
-			: PaletteToolbar
-	}
-	/** Command-box catalogue insert: ephemeral source track, same preview/finalize path as pointer drag. */
-	readonly catalogInsert?: true
-	/** Native catalogue drag pointer bookkeeping (HTML5 drag). */
-	catalogInsertPointer?: {
-		dragStart: { x: number; y: number }
-		grabAnchor?: number
-	}
-	/**
-	 * Border array from `beginPaletteCatalogInsertDrag` (reference identity).
-	 * After `moveToolbarToTrack` / `moveToolbarToStack`, `border` is the real shell and no longer
-	 * equals this seed.
-	 */
-	catalogInsertSeedBorder?: TPalette extends Palette<infer TSchema>
-		? PaletteBorder<PaletteItem<TSchema>>
-		: PaletteBorder
-	/** The track. */
-	track: TPalette extends Palette<infer TSchema> ? PaletteTrack<PaletteItem<TSchema>> : PaletteTrack
-	/** The index of the track. */
-	trackIndex: number
+	/** The selected tools (single tool click, or whole toolbar content). */
+	tools: PaletteToolbarItem[]
 }
 
 /**

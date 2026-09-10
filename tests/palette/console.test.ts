@@ -60,7 +60,7 @@ describe('console without commandBox (command-first)', () => {
 		expect(screen.queryByTestId('console-add-panel')).toBeTruthy()
 	})
 
-	it('edit mode add-box results are draggable tools (no command presets)', async () => {
+	it('edit mode add-box results list addable tools (no command presets)', async () => {
 		const palette = makePalette()
 		openConsole('edit')
 		render(Console, { props: { palette: palette as never, top: top as never } })
@@ -68,7 +68,8 @@ describe('console without commandBox (command-first)', () => {
 		const rows = results.querySelectorAll('.palette-default-command-result')
 		expect(rows.length).toBeGreaterThan(0)
 		for (const row of rows) {
-			expect(row.getAttribute('draggable')).toBe('true')
+			// Catalogue drag was stripped: rows are click-to-select, not draggable.
+			expect(row.getAttribute('draggable')).toBeNull()
 			expect(row.textContent).toMatch(
 				/Add (boolean|number|enum|editor-only|.*) tool|Add editor-only item/
 			)

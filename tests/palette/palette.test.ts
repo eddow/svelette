@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-	clearPaletteCatalogDragOnNativeDragEnd,
 	isEditableTool,
 	isEditing,
 	isRunTool,
-	notifyPaletteCatalogNativeDragStarted,
 	Palette,
 	PaletteError,
 	palettes,
@@ -78,9 +76,7 @@ function editableTools(palette: Palette) {
 
 describe('palette engine', () => {
 	afterEach(() => {
-		palettes.catalogDrag = undefined
 		palettes.editing = undefined
-		palettes.dragging = undefined
 	})
 
 	it('identifies tool families correctly', () => {
@@ -370,14 +366,6 @@ describe('palette engine', () => {
 		expect(surfaceContextFromScope({ region: 'left' }).axis).toBe('vertical')
 		expect(surfaceContextFromScope({ region: 'top' }).axis).toBe('horizontal')
 		expect(surfaceContextFromScope({}).axis).toBe('horizontal')
-	})
-
-	it('clears catalogDrag on native dragend', () => {
-		const palette = createPalette()
-		notifyPaletteCatalogNativeDragStarted(palette)
-		expect(palettes.catalogDrag).toBeDefined()
-		clearPaletteCatalogDragOnNativeDragEnd()
-		expect(palettes.catalogDrag).toBeUndefined()
 	})
 
 	it('documents the multi-setter restore divergence from sursaut', () => {

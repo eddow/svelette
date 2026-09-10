@@ -4,22 +4,16 @@
 	import { closeConsole, consoleState } from '$lib/palette/console.svelte'
 	import type {
 		PaletteAddItemCommandEntry,
-		PaletteCatalogDragPayload,
 		PaletteDerivedVariant
 	} from '$lib/palette/edition.svelte'
 	import {
-		beginPaletteCatalogInsertDrag,
 		handlePaletteCommandBoxInputKeydown,
 		handlePaletteCommandChipKeydown,
-		notifyPaletteCatalogNativeDragStarted,
-		PALETTE_CATALOG_DRAG_MIME,
 		paletteAddItemEntries,
 		paletteCommandBoxModel,
 		paletteCommandEntries,
 		paletteDerivedVariants,
 		palettes,
-		paletteToolbarItemFromCatalogPayload,
-		serializePaletteCatalogDragPayload,
 		setPaletteCommandBoxInput
 	} from '$lib/palette/edition.svelte'
 	import type { Palette as PaletteRuntime } from '$lib/palette/palette.svelte'
@@ -156,11 +150,11 @@
 	})
 
 	// G3 — parking binds the LIVE top border (not a snapshot): rows render
-	// live toolbars, `×` removes from the real border via `removePaletteItem`
-	// plumbing, and every row is a real drag-engine drop target. The
-	// command-box item is excluded from the parking *view* (mirrors the
-	// reference `popupParkingToolbars`) by filtering at render — the live
-	// border itself is untouched.
+	// live toolbars and `×` removes from the real border via `removePaletteItem`
+	// plumbing. The command-box item is excluded from the parking *view*
+	// (mirrors the reference `popupParkingToolbars`) by filtering at render —
+	// the live border itself is untouched. (Drag & drop was stripped; parking
+	// rows are display-only until the next movement design lands.)
 	const parkingScope = $derived({ palette: palette as never })
 
 	const selectedEntry = $derived<PaletteAddItemCommandEntry | undefined>(
@@ -175,63 +169,6 @@
 			? paletteDerivedVariants({ palette: palette as never, entry: selectedEntry as never })
 			: []
 	)
-
-	function catalogPayloadForEntry(
-		entry: PaletteAddItemCommandEntry | { catalogDrag?: unknown; id: string }
-	): PaletteCatalogDragPayload | undefined {
-		// Run-mode entries carry `catalogDrag` (command presets); add entries
-		// carry `source` (tool/item to insert). Only add entries are draggable,
-		// and only in edit mode — run mode never drags.
-		if (!isEditing) return undefined
-		if ('catalogDrag' in entry && entry.catalogDrag)
-			return entry.catalogDrag as PaletteCatalogDragPayload
-		if (!('source' in entry) || !entry.source) return undefined
-		const source = entry.source
-		if (source.kind === 'item' && source.editor) {
-			return {
-				kind: 'variant',
-				variant: {
-					id: `${source.id}:item`,
-					kind: 'item',
-					editor: source.editor,
-					label: source.label,
-					meta: source.meta,
-					icon: source.icon,
-					keywords: source.keywords,
-					categories: source.categories
-				} as PaletteDerivedVariant
-			}
-		}
-		if (source.kind === 'tool' && source.toolId) {
-			return { kind: 'spec', spec: source.toolId as string }
-		}
-		return undefined
-	}
-
-	function startCatalogDrag(event: DragEvent, payload: PaletteCatalogDragPayload) {
-		const item = paletteToolbarItemFromCatalogPayload(palette as never, payload as never)
-		if (!item) return
-		if (event.dataTransfer) {
-			event.dataTransfer.effectAllowed = 'copy'
-			try {
-				event.dataTransfer.setData(
-					PALETTE_CATALOG_DRAG_MIME,
-					serializePaletteCatalogDragPayload(payload as never)
-				)
-			} catch {
-				// jsdom / restricted dataTransfer — session path still works
-			}
-		}
-		try {
-			beginPaletteCatalogInsertDrag(palette as never, item as never, {
-				x: event.clientX,
-				y: event.clientY
-			})
-		} catch {
-			// already dragging — native MIME path still drops
-		}
-		notifyPaletteCatalogNativeDragStarted(palette)
-	}
 
 	let inputEl: HTMLInputElement | undefined = $state(undefined)
 	$effect(() => {
@@ -379,7 +316,6 @@
 									<div class="palette-default-command-empty">No matching commands</div>
 								{:else}
 									{#each activeBox.results.slice(0, 8) as entry (entry.id)}
-										{@const payload = catalogPayloadForEntry(entry as never)}
 										<button
 											type="button"
 											data-testid={`console-result-${entry.id}`}
@@ -388,13 +324,6 @@
 												activeBox.selection.item?.id === entry.id ? 'is-selected' : undefined
 											]}
 											disabled={entry.can === false}
-											draggable={payload !== undefined && isEditing ? 'true' : undefined}
-											title={isEditing
-												? 'Drag into a toolbar (native HTML5 catalogue drag)'
-												: undefined}
-											ondragstart={(event) => {
-												if (payload) startCatalogDrag(event, payload as never)
-											}}
 											onclick={() => {
 												if (isEditing) {
 													activeBox.select(entry.id)
@@ -422,129 +351,129 @@
 						</div>
 					</div>
 				</div>
-			</div>
-			{#if isEditing}
-				<div
-					class="palette-default-panel palette-default-details-panel"
-					data-testid="console-details-panel"
-				>
-					{#if inspectingItem}
-						<div class="palette-default-panel-title">Inspect</div>
-						{#if Configurator && configuratorContext}
-							<Configurator context={configuratorContext} />
+				{#if isEditing}
+					<div
+						class="palette-default-panel palette-default-details-panel"
+						data-testid="console-details-panel"
+					>
+						{#if inspectingItem}
+							<div class="palette-default-panel-title">Inspect</div>
+							{#if Configurator && configuratorContext}
+								<Configurator context={configuratorContext} />
+							{:else}
+								<div class="palette-default-config-empty">
+									No configurator for {inspectingItem.tool ?? inspectingItem.editor}.
+								</div>
+							{/if}
+						{:else if selectedEntry}
+							<div class="palette-default-panel-title">Add to toolbar</div>
 						{:else}
+							<div class="palette-default-panel-title">Details</div>
 							<div class="palette-default-config-empty">
-								No configurator for {inspectingItem.tool ?? inspectingItem.editor}.
+								Click a toolbar item to inspect its presentation, or select a tool or editor on the
+								left to add it to a toolbar.
 							</div>
 						{/if}
-					{:else if selectedEntry}
-						<div class="palette-default-panel-title">Add to toolbar</div>
-					{:else}
-						<div class="palette-default-panel-title">Details</div>
-						<div class="palette-default-config-empty">
-							Click a toolbar item to inspect its presentation, or select a tool or editor on the
-							left to add it to a toolbar.
-						</div>
-					{/if}
-					{#if selectedEntry && !inspectingItem}
-						<div class="palette-default-config-stack" data-testid="console-add-panel">
-							<div class="palette-default-config-header">
-								<strong>{selectedEntry.label}</strong>
-								<span>{selectedEntry.meta}</span>
-							</div>
-							{#each variants as variant (variant.id)}
-								{@const isSelected = consoleState.selectedVariantId === variant.id}
-								<div
-									class={[
-										'palette-default-add-variant',
-										variant.kind === 'set' ? 'is-set' : undefined
-									]}
-								>
-									<button
-										type="button"
+						{#if selectedEntry && !inspectingItem}
+							<div class="palette-default-config-stack" data-testid="console-add-panel">
+								<div class="palette-default-config-header">
+									<strong>{selectedEntry.label}</strong>
+									<span>{selectedEntry.meta}</span>
+								</div>
+								{#each variants as variant (variant.id)}
+									{@const isSelected = consoleState.selectedVariantId === variant.id}
+									<div
 										class={[
-											'palette-default-config-header',
-											'palette-default-add-variant-trigger',
-											isSelected ? 'is-selected' : undefined
+											'palette-default-add-variant',
+											variant.kind === 'set' ? 'is-set' : undefined
 										]}
-										aria-pressed={isSelected ? 'true' : 'false'}
-										onclick={() => {
-											consoleState.selectedVariantId = variant.id
-										}}
 									>
-										<strong>
-											{#if variant.icon && typeof variant.icon === 'string'}
-												<span class="palette-default-icon">{variant.icon}</span>
-											{/if}
-											{variant.label}
-										</strong>
-										<span>{variant.meta}</span>
-									</button>
-									{#if variant.kind === 'set'}
-										<div class="palette-default-add-inline-value">
-											<strong>Value</strong>
-											{#if variant.valueType === 'boolean'}
-												<select
-													value={consoleState.booleanValue}
-													onchange={(e) => {
-														consoleState.booleanValue =
-															e.currentTarget.value === 'false' ? 'false' : 'true'
-													}}
-												>
-													<option value="true">true</option>
-													<option value="false">false</option>
-												</select>
-											{:else if variant.valueType === 'number'}
+										<button
+											type="button"
+											class={[
+												'palette-default-config-header',
+												'palette-default-add-variant-trigger',
+												isSelected ? 'is-selected' : undefined
+											]}
+											aria-pressed={isSelected ? 'true' : 'false'}
+											onclick={() => {
+												consoleState.selectedVariantId = variant.id
+											}}
+										>
+											<strong>
+												{#if variant.icon && typeof variant.icon === 'string'}
+													<span class="palette-default-icon">{variant.icon}</span>
+												{/if}
+												{variant.label}
+											</strong>
+											<span>{variant.meta}</span>
+										</button>
+										{#if variant.kind === 'set'}
+											<div class="palette-default-add-inline-value">
+												<strong>Value</strong>
+												{#if variant.valueType === 'boolean'}
+													<select
+														value={consoleState.booleanValue}
+														onchange={(e) => {
+															consoleState.booleanValue =
+																e.currentTarget.value === 'false' ? 'false' : 'true'
+														}}
+													>
+														<option value="true">true</option>
+														<option value="false">false</option>
+													</select>
+												{:else if variant.valueType === 'number'}
+													<input
+														value={consoleState.setValue}
+														placeholder="14"
+														oninput={(e) => {
+															consoleState.setValue = e.currentTarget.value
+														}}
+													/>
+												{:else if variant.valueType === 'enum'}
+													<select
+														value={consoleState.setValue}
+														onchange={(e) => {
+															consoleState.setValue = e.currentTarget.value
+														}}
+													>
+														<option value="">Choose value…</option>
+														{#each variant.values ?? [] as value (value.value)}
+															<option value={value.value}>{value.label ?? value.value}</option>
+														{/each}
+													</select>
+												{/if}
+											</div>
+										{/if}
+										{#if variant.kind === 'tool'}
+											<label class="palette-default-add-inline-value">
+												<strong>Allowed values</strong>
 												<input
-													value={consoleState.setValue}
-													placeholder="14"
+													value={consoleState.enumValues}
+													placeholder="comma-separated subset"
 													oninput={(e) => {
-														consoleState.setValue = e.currentTarget.value
+														consoleState.enumValues = e.currentTarget.value
 													}}
 												/>
-											{:else if variant.valueType === 'enum'}
-												<select
-													value={consoleState.setValue}
-													onchange={(e) => {
-														consoleState.setValue = e.currentTarget.value
+											</label>
+											<label class="palette-default-add-inline-value">
+												<strong>Keyword filter</strong>
+												<input
+													value={consoleState.enumKeywords}
+													placeholder="row, column"
+													oninput={(e) => {
+														consoleState.enumKeywords = e.currentTarget.value
 													}}
-												>
-													<option value="">Choose value…</option>
-													{#each variant.values ?? [] as value (value.value)}
-														<option value={value.value}>{value.label ?? value.value}</option>
-													{/each}
-												</select>
-											{/if}
-										</div>
-									{/if}
-									{#if variant.kind === 'tool'}
-										<label class="palette-default-add-inline-value">
-											<strong>Allowed values</strong>
-											<input
-												value={consoleState.enumValues}
-												placeholder="comma-separated subset"
-												oninput={(e) => {
-													consoleState.enumValues = e.currentTarget.value
-												}}
-											/>
-										</label>
-										<label class="palette-default-add-inline-value">
-											<strong>Keyword filter</strong>
-											<input
-												value={consoleState.enumKeywords}
-												placeholder="row, column"
-												oninput={(e) => {
-													consoleState.enumKeywords = e.currentTarget.value
-												}}
-											/>
-										</label>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			{/if}
+												/>
+											</label>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
 		</div>
 	</div>
 </div>

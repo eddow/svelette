@@ -875,10 +875,12 @@ export function paletteTool<TSchema extends PaletteSchema>(
 
 /**
  * Global reactive palette UI state shared by layout components while editing and inspecting.
+ *
+ * Movement was stripped for a restart from scratch: no `dragging` or
+ * catalogue-drag session lives here yet. The next movement design will add
+ * its session state back on top of editing/inspecting.
  */
 export const palettes = $state<{
-	/** Native HTML5 drag from the command-box catalogue (separate from pointer toolbar reordering). */
-	catalogDrag?: { palette: PaletteBase }
 	dragging?: PaletteDragging
 	editing?: PaletteBase
 	inspecting?: {
@@ -891,36 +893,6 @@ export const palettes = $state<{
 		trackIndex?: number
 	}
 }>({})
-
-let catalogNativeDragEndListenerRegistered = false
-
-/**
- * Clear a stale catalogue drag when the native drag gesture ends.
- *
- * Extracted so tests can drive the `dragend` path without synthesizing DOM
- * events; the registered listener delegates here.
- */
-export function clearPaletteCatalogDragOnNativeDragEnd(): void {
-	if (palettes.catalogDrag) delete palettes.catalogDrag
-}
-
-function ensureCatalogNativeDragEndListener(): void {
-	if (typeof window === 'undefined' || catalogNativeDragEndListenerRegistered) return
-	catalogNativeDragEndListenerRegistered = true
-	// Capture-phase: clear even when the drop target stops propagation.
-	// A boolean guard (not `$effect.root`) is deliberate: `svelte` exposes no
-	// `effectRoot` export, and module scope has no component effect context.
-	window.addEventListener('dragend', clearPaletteCatalogDragOnNativeDragEnd, true)
-}
-
-/**
- * Mark a palette as having an active native (HTML5) catalogue drag so IDE drop zones stay hittable and highlighted.
- * Cleared automatically on `window` `dragend` (capture).
- */
-export function notifyPaletteCatalogNativeDragStarted(palette: PaletteBase): void {
-	ensureCatalogNativeDragEndListener()
-	palettes.catalogDrag = { palette }
-}
 
 /**
  * Check whether a palette is the currently edited palette.

@@ -1,0 +1,162 @@
+// ── Svelte actions ──
+
+/**
+ * Palette root: keyboard shortcuts + editing highlight.
+ *
+ * Movement was stripped for a restart from scratch: this action no longer
+ * tracks dragging state or catalogue drops. `paletteItemDrag` only inspects.
+ */
+export function paletteRoot(element: HTMLElement, palette: Palette): ReturnType<Action> {
+	if (!element.hasAttribute('tabindex')) {
+		element.tabIndex = 0
+	}
+	setPaletteRootId(element, palette)
+	$effect(() => {
+		const editing = palette.editing
+		setPaletteRootClass(element, 'palette-editing', editing)
+		setPaletteRootClass(element, 'editing', editing)
+		setPaletteRootData(element, 'editing', editing)
+		if (!editing && palettes.inspecting?.palette === palette) delete palettes.inspecting
+	})
+
+	const onKeyDown = (event: KeyboardEvent) => {
+		if (event.defaultPrevented) return
+		if (isEditableTarget(event.target)) return
+		// While editing, tool key bindings are suppressed so the keys are free to
+		// be re-bound (press-to-rebind for shortcuts). This mirrors the pointer
+		// side, where the `inert` shield already blocks run/toggle/check clicks
+		// in edit mode (`paletteItemShield`).
+		if (palette.editing) return
+		const toolId = palette.keys.resolve(event)
+		if (!toolId) return
+		event.preventDefault()
+		event.stopPropagation()
+		const tool = palette.tool(toolId)
+		if (isRunTool(tool)) {
+			if (tool.can) tool.run()
+		} else if (isEditableTool(tool) && tool.type === 'boolean') tool.value = !tool.value
+		else throw new PaletteError(`Palette binding "${toolId}" did not resolve to a runnable tool`)
+	}
+
+	element.addEventListener('keydown', onKeyDown)
+	return {
+		destroy() {
+			element.removeEventListener('keydown', onKeyDown)
+		},
+	}
+}
+
+/**
+ * Passive drop-zone placeholder.
+ *
+ * Movement was stripped: space actions register nothing and clean up only
+ * their highlight flags. They stay mounted so layout markup does not churn
+ * while the next movement design lands.
+ */
+function palettePassiveSpace(element: HTMLElement): ReturnType<Action> {
+	return {
+		destroy() {
+			delete element.dataset.active
+			delete element.dataset.proximity
+		},
+	}
+}
+
+export function paletteTrackSpace(
+	_element: HTMLElement,
+	target: PaletteTrackSpace | undefined
+): ReturnType<Action> {
+	if (!target?.palette) return
+	return palettePassiveSpace(_element)
+}
+
+export function paletteStackSpace(
+	_element: HTMLElement,
+	target: PaletteStackSpace | undefined
+): ReturnType<Action> {
+	if (!target?.palette) return
+	return palettePassiveSpace(_element)
+}
+
+export function paletteToolbarSpace(
+	_element: HTMLElement,
+	target: PaletteToolbarSpace | undefined
+): ReturnType<Action> {
+	if (!target?.palette) return
+	return palettePassiveSpace(_element)
+}
+
+export function paletteToolbarDrag(
+	element: HTMLElement,
+	target: PaletteToolbarDrag | undefined
+): ReturnType<Action> {
+	let current = target
+	if (!current) return
+	const onPointerDown = (event: PointerEvent) => {
+		const live = current
+		if (!live?.palette) return
+		if (!live.palette.editing) return
+		if (event.button !== 0) return
+		if (isEditableTarget(event.target)) return
+		// Movement stripped: toolbar grabs do nothing (restart from scratch).
+		event.preventDefault()
+	}
+	element.addEventListener('pointerdown', onPointerDown)
+	return {
+		update(next: PaletteToolbarDrag | undefined) {
+			current = next
+		},
+		destroy() {
+			element.removeEventListener('pointerdown', onPointerDown)
+		},
+	}
+}
+
+export function paletteItemDrag(
+	element: HTMLElement,
+	target: PaletteItemDragTarget | undefined
+): ReturnType<Action> {
+	let current = target
+	if (!current) return
+	const onPointerDown = (event: PointerEvent) => {
+		const live = current
+		if (!live) return
+		if (!live.palette.editing) return
+		if (event.button !== 0) return
+		event.stopPropagation()
+		palettes.inspecting = {
+			item: live.item,
+			palette: live.palette,
+			region: live.region,
+			toolbar: live.toolbar,
+			track: live.track,
+			border: live.border,
+			trackIndex: live.trackIndex,
+		}
+	}
+
+	element.addEventListener('pointerdown', onPointerDown)
+	return {
+		update(next: PaletteItemDragTarget | undefined) {
+			current = next
+		},
+		destroy() {
+			element.removeEventListener('pointerdown', onPointerDown)
+		},
+	}
+}
+
+export function paletteItemShield(
+	element: HTMLElement,
+	active: boolean
+): { update(next: boolean): void; destroy(): void } {
+	element.inert = active
+	return {
+		update(next: boolean) {
+			element.inert = next
+		},
+		destroy() {
+			element.inert = false
+		},
+	}
+}

@@ -1,0 +1,4 @@
+
+> svelette@0.0.1 test:e2e
+> playwright test
+
