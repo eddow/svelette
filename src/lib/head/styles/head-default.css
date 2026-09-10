@@ -168,6 +168,48 @@
 	font: inherit;
 }
 
+/* Square action button that opens the console (edit mode) from the toolbar
+ * command box. Mirrors the console's `command-mode` toggle chrome so the two
+ * read as the same affordance, but it is a plain button — not a check-button. */
+.palette-default-command-open {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	flex: 0 0 auto;
+	margin: -2px;
+	padding: 0;
+	border: 1px solid rgba(71, 85, 105, 0.95);
+	border-radius: 10px;
+	background: rgba(15, 23, 42, 0.88);
+	color: #94a3b8;
+	cursor: pointer;
+	font-size: 0.9rem;
+	line-height: 1;
+	transition:
+		border-color 120ms ease,
+		background 120ms ease,
+		color 120ms ease;
+}
+.palette-default-command-open:hover,
+.palette-default-command-open:focus-visible {
+	border-color: #60a5fa;
+	background: #1d4ed8;
+	color: #eff6ff;
+}
+.palette-default-theme-light .palette-default-command-open {
+	border-color: rgba(148, 163, 184, 0.9);
+	background: #ffffff;
+	color: #475569;
+}
+.palette-default-theme-light .palette-default-command-open:hover,
+.palette-default-theme-light .palette-default-command-open:focus-visible {
+	border-color: #60a5fa;
+	background: #1d4ed8;
+	color: #eff6ff;
+}
+
 .palette-default-command-input::placeholder {
 	color: #94a3b8;
 }

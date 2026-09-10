@@ -1,8 +1,127 @@
 # Movement — Analysis & Plan
 
-> Status: **Phases 1–4 implemented** (G1 uniform halo, G2 delete, G3 live
-> parking). Remaining: e2e verification + this file's retirement per `AGENTS.md`.
-> Permanent principles live in `docs/movements.md`.
+> Status: **NOT done.** Phases 1–4 closed the *unit-testable* gaps (G1 uniform
+> halo, G2 delete, G3 live parking), but real-browser testing (trusted
+> `page.mouse`, not synthetic `dispatchEvent`) reproduces two live bugs the
+> current suite does not catch. See "Re-opened — live bugs" below. Permanent
+> principles live in `docs/movements.md`.
+
+## Re-opened — live bugs (reproduced with real mouse, 2026-09-09)
+
+Both repro'd against the demo (`autoOxygen` in the top border, edit mode):
+
+1. **In-toolbar drop zones never expand during traversal.** Item-spaces are
+   `width: 0` and stack/track spaces `height: 0`; a target only registers at its
+   literal edge (`rectContainsPoint` is inclusive). A real cursor drifts through
+   the **void between gaps**, where no target is ever "near enough", so
+   `data-proximity`/`data-active` never fire and the zones never mini-expand.
+2. **Hovering a bar container (stack/track) after a void segment loses the
+   tool.** The current e2e helpers dispatch a *single* `pointermove` straight at
+   the target; a real browser emits dozens of `pointermove` events through
+   intermediate void positions. That void path is where `resolvedTarget` is
+   `undefined` and the tool can be dropped into an invisible shell — the
+   "tool just disappears" symptom.
+
+### Why the suite is green despite the bugs
+
+The tests assert **final outcomes** (count before == count after) but never
+traverse the **intermediate positions** a real cursor crosses. They jump A → B
+in one synthetic event, so:
+
+- the void branch (`resolvedTarget === undefined`) is ~never exercised with a
+  real intermediate event under the cursor;
+- "drop zone doesn't open" (a *mid-gesture* visual state) isn't asserted;
+- conservation is only checked *after* release, not at *every intermediate
+  frame*, so a transient disappearance isn't caught.
+
+### New root cause found: fast drag skips the halo (2026-09-09)
+
+Real-mouse reproduction (`page.mouse`, slow + sampled) **conserves items and
+creates singletons correctly** — the engine works when the cursor *lingers*
+within 12px of a gap. But human drags move the pointer tens of px between
+`pointermove` events, and the drop zones are **zero-width/zero-height**; their
+only hit area is a 12px halo around a 0px edge. A fast cursor sails from one
+item to the next without ever landing inside a halo, so `data-proximity` never
+fires and the zones never "open" — exactly the reported symptom. The bug is a
+**hit-area-too-small** problem, not a correctness problem in the move logic:
+- the mini-expansion (`data-proximity` → `min-inline-size: 8px`) only helps
+  *after* the pointer is already inside the 12px halo;
+- the halo is axis-distance-based and tiny relative to item stride (~50–200px).
+
+### Chosen fix: "4 nearest drop-zones always open" (2026-09-09)
+
+Drop-zone expansion must happen **far before** the pointer reaches a slot, so
+the user always sees where it will land. Best case (adopted): during a drag there
+are always up to **4 open zones** — the nearest on the right, nearest on the
+left, nearest above, nearest below — regardless of distance. Zero dead-zone.
+
+Design:
+
+- `nearestDragTargetsByDirection(candidates, point)` — pure helper: from the
+  unified, ignore-filtered candidate list, returns `{ left, right, up, down,
+  nearest }`. `left`/`right`/`up`/`down` are the four directional nearests (by
+  rect centre); `nearest` is the single nearest overall (containment preferred)
+  and is the **commit** target.
+- `paletteToolbarDragApplyMove` builds the unified candidate list from
+  `toolbarSpaceTargets`/`trackSpaceTargets`/`stackSpaceTargets` (respecting
+  `isIgnoredToolbarSpace`/`isIgnoredDropZone`/`isIgnoredStackSpace`), then:
+  - marks the four directional nearests `data-proximity` (mini-expand, always),
+  - marks `nearest` `data-active` (the commit target),
+  - drives the existing preview/move path from `nearest`.
+
+This replaces the single-nearest-within-12px-halo resolution in `applyMove` (the
+`resolveDragTarget` decision table and the `*FromTargets` resolvers stay for the
+catalogue/legacy paths and are unchanged).
+
+### Chosen fix: whole-toolbar drag never merges (2026-09-10)
+
+Dropping a whole toolbar (2+ items) onto a toolbar space concatenated its tools
+into the host (`A B C` onto `X Y` → `X A B C Y`), losing the toolbar boundary.
+`isIgnoredToolbarSpace` now bails when the session is flagged `wholeToolbar`, so
+every toolbar space is ignored for a whole-toolbar drag — it must land in a
+track or stack space as its own toolbar. A single-item (tool) drag still
+merges. The "4 nearest drop-zones" affordance is the standard for **any** drag
+kind (the ignore guard simply drops toolbar spaces from the candidates of a
+whole-toolbar drag).
+
+### Implemented: multi-tool = whole-toolbar drag only (2026-09-10)
+
+Several tools move at once **only** when a whole toolbar is dragged (grabbing
+the toolbar chrome). `createToolbarDragging` flags the session `wholeToolbar`;
+the whole toolbar is the moving unit, kept together, never reordered among
+itself. There is no separate selection mechanism — multi-tool drag is exactly
+the whole-toolbar drag path, not a shift-click selection.
+
+### TODOs (re-opened)
+
+- [x] **Repeat-move DZ re-open** — second drag session never opened drop-zones
+      (`openCount === 0`). Root cause: `createItemDragging`'s guard
+      `target.toolbar[target.itemIndex] !== target.item` fails on the second
+      drag because the first move's commit splices a `$state`-proxied item into
+      the live (plain) toolbar, so array identity no longer matches the raw
+      `target.item`. Same proxy-identity hazard hit two spots:
+      - the `createItemDragging` slot-match guard → `createItemDragging`
+        returned `undefined`, so the session never started;
+      - the `onActivate` detach `live.toolbar.indexOf(pending.item)` → the
+        detach silently no-oped, duplicating the item (`[a,b,b,c]`).
+      Both fixed with structural (`JSON.stringify`) matching, mirroring the
+      existing `Toolbar.svelte` `isInactiveSpace` membership rule.
+- [ ] **Real-mouse e2e:** replace/augment `dispatchEvent` drags with
+      `page.mouse` multi-step drags that pass through the void between gaps.
+- [ ] **Void-traversal conservation:** assert the live item count never drops
+      below baseline at *any* intermediate frame during a slow multi-segment
+      drag (not just after `up`).
+- [ ] **Drop-zone expansion:** assert `data-proximity`/`data-active` actually
+      fire on a target as the cursor moves *near* a gap (not merely on a
+      pixel-exact edge), across all three slot kinds.
+- [ ] **Bar-container singleton:** drag a tool onto a *track/stack* bar via
+      real mouse and assert a singleton toolbar appears (the current
+      `dispatchEvent` version only proves the collision handler, not the live
+      gesture).
+- [ ] **Fix the void path:** once tests expose it, make the engine keep the
+      dragged tool visible/deterministic across void segments (never
+      disappear; nearest-in-halo target wins) — see G1/G2 design in
+      `docs/movements.md`.
 
 ## The target behaviour (agreed)
 
@@ -131,11 +250,22 @@ Three layers, in order of primary value:
   from the real toolbar; rows are real drag-engine drop targets.
 - [x] D1 decided: parking **not persisted** (accepted-but-ignored field).
 
-### Phase 5 — Docs — IN PROGRESS
+### Phase 5 — Docs + live-drag hardening — DONE
 
-- [x] `docs/movements.md` updated (uniform halo, deletion paths, D1/D2/D3).
-- [ ] Full gates (`check`/`lint`/`test`/`test:e2e`/`build`) then retire this file
-  per `AGENTS.md` (remove completed items; permanent details already migrated).
+- [x] `docs/movements.md` updated (uniform halo, deletion paths, D1/D2/D3,
+  detach-on-activate, mid-drag chrome membership rule, shell-aware stack move,
+  true-origin source refs).
+- [x] Detach-on-activate: click never removes the tool; activated drag over
+  void keeps it alive via the origin preview (`live-drag.test.ts`: click,
+  void-conservation, mid-drag chrome).
+- [x] Mid-drag chrome: origin toolbar renders `data-dragging` + inactive
+  preview-span gaps via membership match (proxy-safe).
+- [x] Stack singleton: item drag onto a stack space spawns a singleton
+  toolbar (shell-aware `moveToolbarToStack` + true-origin source refs);
+  e2e proximity-stack test green.
+- [x] Full gates green (`check`/`lint`/`test`/`test:e2e`/`build`).
+- [ ] Retire this file per `AGENTS.md` (remove completed items; permanent
+  details already migrated to `docs/movements.md`).
 
 ## Open decisions — all decided
 

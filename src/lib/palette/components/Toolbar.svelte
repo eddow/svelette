@@ -74,7 +74,28 @@
 		if (!dragging) return false
 		if (toolbar === dragging.toolbar) return true
 		const preview = dragging.toolbarPreview
-		if (!preview || toolbar !== preview.toolbar) return false
+		if (!preview) return false
+		if (toolbar === preview.toolbar)
+			return index >= preview.index && index <= preview.index + preview.count
+		// `$state` deep-proxying breaks `===` between the session's
+		// `preview.toolbar` and this component's `toolbar` prop (verified in
+		// a probe: `preview.toolbar === origin` is false even for the host,
+		// and the same holds for `inspecting.toolbar`). The preview host is
+		// the toolbar currently showing the dragged items: match by
+		// membership — the host contains every dragged source item. Item
+		// identity across proxy graphs is unreliable, so compare
+		// structurally (items are plain data: `{ tool, ... }`).
+		const items = dragging.sourceItems
+		if (items.length === 0) return false
+		const fingerprints = new Set(items.map((item) => JSON.stringify(item)))
+		let contains = false
+		for (const live of toolbar) {
+			if (fingerprints.has(JSON.stringify(live))) {
+				contains = true
+				break
+			}
+		}
+		if (!contains) return false
 		return index >= preview.index && index <= preview.index + preview.count
 	}
 
@@ -102,7 +123,20 @@
 	}
 
 	const editing = $derived(palette.editing)
-	const dragging = $derived(draggingToolbar === toolbar)
+	// The session's unit toolbar is the ephemeral shell for item drags (never
+	// rendered), so `data-dragging` keys off the live preview host instead —
+	// the toolbar currently showing the dragged items (same membership rule
+	// as `isInactiveSpace`; `===` identity is broken by `$state` proxies).
+	const dragging = $derived.by(() => {
+		if (draggingToolbar === toolbar) return true
+		const session = palettes.dragging?.palette === palette ? palettes.dragging : undefined
+		const preview = session?.toolbarPreview
+		if (!preview) return false
+		if (toolbar === preview.toolbar) return true
+		const fingerprints = new Set(session.sourceItems.map((item) => JSON.stringify(item)))
+		if (fingerprints.size === 0) return false
+		return toolbar.some((live) => fingerprints.has(JSON.stringify(live)))
+	})
 	const inspecting = $derived(
 		palettes.inspecting?.palette === palette ? palettes.inspecting : undefined
 	)

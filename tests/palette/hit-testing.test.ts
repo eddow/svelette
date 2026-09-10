@@ -5,7 +5,9 @@ import {
 	isIgnoredStackSpace,
 	isIgnoredToolbarSpace,
 	type MeasuredTarget,
+	nearestDragTargetsByDirection,
 	PALETTE_PROXIMITY_HALO,
+	type PaletteDragTarget,
 	type PaletteStackSpace,
 	type PaletteToolbarSpace,
 	type PaletteTrackSpace,
@@ -212,6 +214,118 @@ describe('halo expansion threshold', () => {
 	})
 })
 
+describe('nearestDragTargetsByDirection (4 open zones)', () => {
+	// Real elements so getBoundingClientRect works; override geometry directly.
+	// `kind` decides the axis: 'toolbar-space'/'track-space' → main (begin/end),
+	// 'stack-space' → cross (centric/excentric).
+	function dirTarget(
+		left: number,
+		top: number,
+		kind: PaletteDragTarget['kind'] = 'toolbar-space',
+		w = 8,
+		h = 40
+	): PaletteDragTarget {
+		const el = document.createElement('div')
+		el.getBoundingClientRect = () =>
+			({ left, top, right: left + w, bottom: top + h, width: w, height: h }) as DOMRect
+		const base = kind === 'stack-space' ? stackSpace({}) : toolbarSpace({ index: 0 })
+		return {
+			...base,
+			element: el,
+			kind,
+			contained: false,
+		} as PaletteDragTarget
+	}
+
+	it('resolves begin/end nearests along the main axis (vertical region)', () => {
+		// Two reorder targets at the same x, one above (begin), one below (end).
+		const above = dirTarget(96, 0) // center (100,20)
+		const below = dirTarget(96, 200) // center (100,220)
+		const result = nearestDragTargetsByDirection(
+			[above, below],
+			{ x: 100, y: 120 },
+			'vertical',
+			'left'
+		)
+		expect(result.begin).toBe(above)
+		expect(result.end).toBe(below)
+	})
+
+	it('resolves centric/excentric nearests along the cross axis (left region)', () => {
+		// Two new-stack targets at the same y, one left (excentric), one right (centric).
+		const excentric = dirTarget(0, 96, 'stack-space', 40, 8) // center (20,100)
+		const centric = dirTarget(200, 96, 'stack-space', 40, 8) // center (220,100)
+		const result = nearestDragTargetsByDirection(
+			[excentric, centric],
+			{ x: 120, y: 100 },
+			'vertical',
+			'left'
+		)
+		expect(result.excentric).toBe(excentric)
+		expect(result.centric).toBe(centric)
+	})
+
+	it('opens the nearest zone far from the pointer (no distance limit)', () => {
+		// A single target far along the main axis must still register as an open zone.
+		const far = dirTarget(96, 600)
+		const result = nearestDragTargetsByDirection([far], { x: 100, y: 100 }, 'vertical', 'left')
+		expect(result.end).toBe(far)
+		expect(result.nearest).toBe(far)
+	})
+
+	it('prefers a contained target as nearest over a closer-by-distance one', () => {
+		const contained = dirTarget(96, 100) // contains pointer at (100,100) left edge
+		const far = dirTarget(96, 300)
+		const result = nearestDragTargetsByDirection(
+			[contained, far],
+			{ x: 100, y: 100 },
+			'vertical',
+			'left'
+		)
+		expect(result.nearest).toBe(contained)
+	})
+
+	it('ignores begin/end gaps on a different cross-axis lane (other toolbar)', () => {
+		// Regression: dragging on the left (vertical) toolbar must not open
+		// begin/end drop-zones on the *right* toolbar. Both gaps share the same
+		// main-axis (Y) coordinate, but their cross-axis (X) spans differ — the
+		// pointer's X only falls inside the left-toolbar lane.
+		// Left-toolbar gap: cross span 96..104 (contains pointer x=100).
+		const leftLane = dirTarget(96, 200, 'toolbar-space', 8, 40) // center (100,220)
+		// Right-toolbar gap: cross span 300..308 (pointer x=100 is far away),
+		// but nearer along the main axis (its centre Y is closer to 100).
+		const rightLane = dirTarget(300, 150, 'toolbar-space', 8, 40) // center (304,170)
+		const result = nearestDragTargetsByDirection(
+			[leftLane, rightLane],
+			{ x: 100, y: 100 },
+			'vertical',
+			'left'
+		)
+		// Only the left-lane gap (which encompasses the pointer's X) is a zone.
+		expect(result.end).toBe(leftLane)
+		expect(result.begin).toBeUndefined()
+	})
+
+	it('ignores stack gaps on a different main-axis row (other lane)', () => {
+		// The transposed case: centric/excentric stack gaps must flank the
+		// pointer's main-axis (Y) lane — a stack gap at a far-away Y row must
+		// not open, even though its X is nearer.
+		// Same-row stack gap: main (Y) span 96..104 (contains pointer y=100),
+		// and left of the pointer (x=60 < 100) so it is the excentric side.
+		const sameRow = dirTarget(40, 96, 'stack-space', 40, 8) // center (60,100)
+		// Far-row stack gap: main (Y) span 300..308 (pointer y=100 outside).
+		const farRow = dirTarget(0, 300, 'stack-space', 40, 8) // center (20,304)
+		const result = nearestDragTargetsByDirection(
+			[sameRow, farRow],
+			{ x: 100, y: 100 },
+			'vertical',
+			'left'
+		)
+		expect(result.excentric).toBe(sameRow)
+		expect(result.centric).toBeUndefined()
+	})
+})
+
 describe('resolveDragTarget decision table', () => {
 	const el = () => document.createElement('div')
 
@@ -362,6 +476,21 @@ describe('ignored-zone rules', () => {
 		const toolbar: never[] = []
 		const dragged = { toolbar: toolbar as never } as never
 		expect(isIgnoredToolbarSpace({ toolbar, index: 0 } as never, dragged)).toBe(true)
+	})
+
+	it('ignores every toolbar space for a whole-toolbar drag (preserves separation)', () => {
+		// A whole-toolbar drag is flagged `wholeToolbar`; dropping it on a
+		// toolbar space would concatenate tools and lose the toolbar boundary.
+		// Every toolbar space must be ignored so the toolbar lands as its own
+		// toolbar in a track/stack space instead.
+		const dragged = { wholeToolbar: true } as never
+		expect(isIgnoredToolbarSpace({ toolbar: [], index: 0 } as never, dragged)).toBe(true)
+		expect(isIgnoredToolbarSpace({ toolbar: [], index: 5 } as never, dragged)).toBe(true)
+	})
+
+	it('does not ignore toolbar spaces for a single-item (tool) drag', () => {
+		const dragged = { sourceItems: [{ tool: 'a' }] } as never
+		expect(isIgnoredToolbarSpace({ toolbar: [], index: 0 } as never, dragged)).toBe(false)
 	})
 
 	it('ignores toolbar spaces inside the current preview span', () => {

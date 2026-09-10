@@ -184,12 +184,6 @@ export type PaletteKeystroke = string
 export type PaletteKeyBindings = Record<PaletteKeystroke, string>
 
 /**
- * Canonical singular alias for `PaletteKeyBindings`, matching the reference
- * `@sursaut/ui/palette` public type name.
- */
-export type PaletteKeyBinding = PaletteKeyBindings
-
-/**
  * Normalized keyboard binding registry for palette command specs.
  */
 export interface PaletteKeys {
@@ -276,17 +270,6 @@ export type PaletteToolbarItem<
 	TEditor extends string = string,
 	TConfig = unknown,
 > = PaletteToolToolbarItem<TTool, TEditor, TConfig> | PaletteEditorOnlyToolbarItem<TEditor, TConfig>
-
-/**
- * Icon renderer provided by the palette consumer, matching the reference
- * `PaletteDrawerIconRenderer`. Receives the raw icon value and returns the
- * rendered element (or `undefined` to suppress it).
- *
- * The port keeps this as a public type for API parity, though the bundled head
- * renders `PaletteIcon` (`string | Component`) directly rather than through a
- * renderer function.
- */
-export type PaletteDrawerIconRenderer = (icon: PaletteIcon | undefined) => Component | undefined
 
 /**
  * Toolbar item that opens a child toolbar track **perpendicular** to its parent.
@@ -871,20 +854,29 @@ export interface PaletteDragging<TPalette extends Palette = Palette> {
 		? PaletteToolbar<PaletteItem<TSchema>>
 		: PaletteToolbar
 	/**
+	 * Whether the drag unit is the **whole** toolbar (grabbed via the toolbar
+	 * chrome). Whole-toolbar drags move every item together and never merge
+	 * into another toolbar (`isIgnoredToolbarSpace` bails) — they must land in
+	 * a track/stack space. Item drags are `false` (unset) and may merge.
+	 */
+	wholeToolbar?: boolean
+	/**
 	 * Pending detach for item drags (detach-on-activate).
 	 *
-	 * `createItemDragging` builds the ephemeral single-item shell up-front
-	 * but must NOT splice the item out of its live toolbar until the pointer
-	 * passes the activation threshold — otherwise a plain click (or any
-	 * pre-activation render) shows the tool as disappeared. `onActivate`
-	 * consumes this exactly once (splice + preview); `onClick`/abandon paths
-	 * leave the toolbar untouched when it is still pending.
+	 * `createItemDragging` builds the ephemeral shell up-front but must NOT
+	 * splice the item out of the live toolbar until the pointer starts moving
+	 * — otherwise a plain click (or any pre-activation render) shows the tool
+	 * as disappeared. `onActivate` consumes this exactly once (splice +
+	 * preview); `onClick`/abandon paths leave the toolbar untouched when it is
+	 * still pending.
 	 */
 	pendingDetach?: {
+		/** The item to detach. */
 		item: TPalette extends Palette<infer TSchema> ? PaletteItem<TSchema> : PaletteToolbarItem
 		toolbar: TPalette extends Palette<infer TSchema>
 			? PaletteToolbar<PaletteItem<TSchema>>
 			: PaletteToolbar
+		/** The index of the detached item within the toolbar. */
 		index: number
 	}
 	/** Optional toolbar preview. */

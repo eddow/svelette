@@ -3,12 +3,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import DemoSliderEditor from '$lib/demo/editors/SliderEditor.svelte'
 import StarsEditor from '$lib/demo/editors/StarsEditor.svelte'
 import BaseConfigurator from '$lib/head/editors/BaseConfigurator.svelte'
+import CommandBoxEditor from '$lib/head/editors/CommandBoxEditor.svelte'
 import SegmentedEditor from '$lib/head/editors/SegmentedEditor.svelte'
 import SelectEditor from '$lib/head/editors/SelectEditor.svelte'
 import StepperEditor from '$lib/head/editors/StepperEditor.svelte'
 import ToggleEditor from '$lib/head/editors/ToggleEditor.svelte'
+import { closeConsole, consoleState } from '$lib/palette/console.svelte'
 import { configuratorPresenter } from '$lib/palette/core.svelte'
 import { removePaletteItem } from '$lib/palette/edition.svelte'
+import { Palette } from '$lib/palette/palette.svelte'
 import type {
 	PaletteBorder,
 	PaletteEditorContext,
@@ -157,6 +160,43 @@ describe('head editors', () => {
 			'flip',
 			'select',
 		])
+	})
+
+	it('CommandBoxEditor renders an open-editor button that opens the console in edit mode', async () => {
+		const palette = new Palette({
+			tools: {
+				foo: {
+					label: 'Foo',
+					get can() {
+						return true
+					},
+					run() {},
+				},
+			},
+			keys: {},
+			editable: true,
+			editors: { item: { commandBox: {} } } as never,
+			editorDefaults: { run: 'button' },
+		})
+		const item: PaletteToolbarItem = { editor: 'commandBox' }
+		const context = {
+			item,
+			tool: undefined,
+			scope: { palette: palette as never },
+			flags: {},
+			surface: { axis: 'horizontal' as const },
+		} as PaletteEditorContext<undefined, PaletteToolbarItem, PaletteSchema>
+
+		render(CommandBoxEditor, { props: { context } })
+		const button = screen.getByTestId('command-box-open-editor')
+		expect(button).toBeTruthy()
+		// Not a toggle/check-button: no aria-pressed.
+		expect(button.getAttribute('aria-pressed')).toBeNull()
+		expect(consoleState.open).toBe(false)
+		await fireEvent.click(button)
+		expect(consoleState.open).toBe(true)
+		expect(consoleState.mode).toBe('edit')
+		closeConsole()
 	})
 
 	describe('G2 headless removal', () => {

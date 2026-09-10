@@ -57,6 +57,12 @@ The toolbar `commandBox` editor is a real **commands-combo-box** (text input + r
 Ctrl-Shift-P style) built on `paletteCommandBoxModel` + `paletteCommandEntries` — a **run**
 surface that executes commands inline on the toolbar. It is independent of the console.
 
+When the palette is R/W (`editable !== false`), the combobox's shell also carries a **square
+edit-icon button** (`command-box-open-editor`, `✎`) on the left of the input — a plain action
+button (not a check-button/toggle), which opens the console in **edit mode**. Since the
+combobox already runs commands inline, the console opens edit-only when a `commandBox` is
+displayed (no `console-mode-toggle` in the modal itself).
+
 The **console** is a separate modal (opened by the `console` run tool / key). Its mode depends
 on whether a `commandBox` combobox is on the toolbar: if so it opens in **edit mode** (running
 happens inline); if not it opens **command-first** (its own run box) and, when the palette is

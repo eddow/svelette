@@ -49,6 +49,13 @@ import type {
 /** Orientation of a toolbar's item axis. */
 export type PaletteOrientation = 'horizontal' | 'vertical'
 
+/**
+ * How long the pointer must rest on a stack-space drop-zone before a new track
+ * is created there. Toolbar/track-space commits are immediate; only new-stack
+ * creation is dwell-gated (see `docs/movements.md` "Drop-zones", case B).
+ */
+export const STACK_CREATE_DWELL_MS = 1000
+
 export type PaletteTrackSpace = {
 	border: PaletteBorder
 	direction: PaletteOrientation
@@ -451,10 +458,16 @@ function resizeToolbarFromPointer(
 /**
  * Clears the transient toolbar-in-toolbar preview and restores the source track snapshot.
  */
-function clearToolbarPreview(dragging: PaletteDragging): void {
+function clearToolbarPreview(dragging: PaletteDragging, host?: PaletteToolbar): void {
 	const preview = dragging.toolbarPreview
-	if (!preview) return
-	preview.toolbar.splice(preview.index, preview.count)
+	if (!preview)
+		return // `preview.toolbar` is a `$state` deep proxy of the live host array (the
+		// session lives in the `$state` `palettes` store). Splicing that proxy can
+		// diverge from the live array the caller holds, so the dragged items are
+		// never actually removed and re-splice duplicates them (see
+		// `docs/movements.md` §20 proxy hazards). Prefer the caller's plain `host`
+		// ref when it is the same toolbar.
+	;(host ?? preview.toolbar).splice(preview.index, preview.count)
 	const sourceTrack = preview.source.track
 	sourceTrack.splice(0, sourceTrack.length, ...preview.source.snapshot)
 	if (preview.source.removedTrack) {
@@ -488,7 +501,7 @@ function previewToolbarItems(
 	) {
 		return
 	}
-	clearToolbarPreview(dragging)
+	clearToolbarPreview(dragging, toolbar)
 	const sourceTrack = dragging.track
 	const sourceBorder = dragging.border
 	const sourceTrackIndex = sourceBorder.indexOf(sourceTrack)
@@ -647,6 +660,72 @@ export function resolveTrackSpaceTarget(point: {
 	return resolveTrackSpaceTargetFromTargets(trackSpaceTargets(), point)
 }
 
+/**
+ * Build the unified ignore-filtered candidate list across all three slot kinds,
+ * for the directional open-zones resolution in `paletteToolbarDragApplyMove`.
+ * Unlike the `resolve*Target` wrappers, this does **not** halo-filter — every
+ * registered, non-ignored slot is a candidate, so the four nearests stay open
+ * regardless of distance.
+ */
+function directionalCandidates(
+	point: { x: number; y: number },
+	dragging: PaletteDragging,
+	origin: {
+		originRect: DOMRectReadOnly | undefined
+		dragStart: { x: number; y: number }
+	}
+): PaletteDragTarget[] {
+	const result: PaletteDragTarget[] = []
+	for (const measured of toolbarSpaceTargets()) {
+		const candidate: PaletteToolbarDragTarget = {
+			...measured.target,
+			element: measured.element,
+			kind: 'toolbar-space',
+			contained: rectContainsPoint(measured.rect, point),
+		}
+		if (!isIgnoredToolbarSpace(candidate, dragging)) result.push(candidate)
+	}
+	for (const measured of trackSpaceTargets()) {
+		if (isIgnoredDropZone(measured.target, dragging)) continue
+		const axis = measured.target.direction === 'horizontal' ? 'horizontal' : 'vertical'
+		const start = axis === 'horizontal' ? measured.rect.left : measured.rect.top
+		const end = axis === 'horizontal' ? measured.rect.right : measured.rect.bottom
+		const position = axis === 'horizontal' ? point.x : point.y
+		const split =
+			Number.isFinite(start) && Number.isFinite(end) && end > start
+				? Math.min(1, Math.max(0, (position - start) / (end - start)))
+				: 0
+		result.push({
+			...measured.target,
+			element: measured.element,
+			kind: 'track-space',
+			contained: rectContainsPoint(measured.rect, point),
+			split,
+		})
+	}
+	for (const measured of stackSpaceTargets()) {
+		if (
+			origin.originRect &&
+			isIgnoredStackSpace(measured.target, point, {
+				border: dragging.sourceBorder,
+				sourceRegion: dragging.sourceRegion,
+				sourceTrackWasSingleton: dragging.sourceTrackWasSingleton,
+				start: origin.dragStart,
+				region: dragging.sourceRegion,
+				trackIndex: dragging.sourceTrackIndex,
+			})
+		)
+			continue
+		result.push({
+			...measured.target,
+			element: measured.element,
+			kind: 'stack-space',
+			contained: rectContainsPoint(measured.rect, point),
+		})
+	}
+	return result
+}
+
 /** DOM-measuring wrapper: resolve the nearest toolbar space to `point`. */
 export function resolveToolbarSpaceTarget(point: {
 	x: number
@@ -689,6 +768,116 @@ export function resolveDragTarget(candidates: {
 						: trackTarget
 }
 
+export type PaletteDirectionalTargets = {
+	begin: PaletteDragTarget | undefined
+	end: PaletteDragTarget | undefined
+	centric: PaletteDragTarget | undefined
+	excentric: PaletteDragTarget | undefined
+	/** The single nearest target overall (containment preferred); the commit target. */
+	nearest: PaletteDragTarget | undefined
+}
+
+/**
+ * Resolve the nearest drop-target in each of the four surrounding directions,
+ * plus the overall nearest commit target, from a candidate list.
+ *
+ * The four surrounding drop-zones are discovered axis-aware, matching
+ * `docs/movements.md` "Drop-zones":
+ *
+ * - **begin / end** — along the toolbar's **main** axis. Reorder zones
+ *   (toolbar-space) and track-insert zones (track-space) are bucketed here.
+ * - **centric / excentric** — along the **cross** axis. New-stack zones
+ *   (stack-space) are bucketed here, toward/away from the IDE centre.
+ *
+ * The four are always open (`data-proximity`), recomputed as the pointer moves,
+ * with no distance limit — no dead zone. `nearest` prefers a contained slot,
+ * else the closest by Euclidean distance, and is what commits.
+ *
+ * @param targets — ignore-filtered candidate list (see `isIgnored*` guards).
+ * @param mainAxis — the dragged toolbar's item axis (vertical for left/right
+ *   regions, horizontal for top/bottom).
+ * @param region — the docking region (decides which cross-axis side is centric).
+ */
+export function nearestDragTargetsByDirection(
+	targets: readonly PaletteDragTarget[],
+	point: { x: number; y: number },
+	mainAxis: PaletteOrientation,
+	region: PaletteRegion
+): PaletteDirectionalTargets {
+	const center = (target: PaletteDragTarget) => {
+		const rect = target.element.getBoundingClientRect()
+		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+	}
+	const mainCoord = (c: { x: number; y: number }) => (mainAxis === 'vertical' ? c.y : c.x)
+	const crossCoord = (c: { x: number; y: number }) => (mainAxis === 'vertical' ? c.x : c.y)
+	const pointMain = mainAxis === 'vertical' ? point.y : point.x
+	const pointCross = mainAxis === 'vertical' ? point.x : point.y
+	// Sign: +1 when a larger cross-axis coordinate is toward the IDE centre.
+	const centricSign =
+		mainAxis === 'vertical' ? (region === 'left' ? 1 : -1) : region === 'top' ? 1 : -1
+
+	let begin: PaletteDragTarget | undefined
+	let end: PaletteDragTarget | undefined
+	let centric: PaletteDragTarget | undefined
+	let excentric: PaletteDragTarget | undefined
+	let nearest: PaletteDragTarget | undefined
+	let nearestDistance = Infinity
+	let nearestContained = false
+
+	for (const target of targets) {
+		const rect = target.element.getBoundingClientRect()
+		const c = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+
+		if (target.kind === 'stack-space') {
+			// New-stack zones live along the cross axis (centric / excentric).
+			// They flank the pointer's **main-axis** lane: only consider a stack
+			// gap whose main-axis span encompasses the pointer, so a stack gap on
+			// a far-away row never opens. (For a vertical toolbar the main axis
+			// is Y, so the gap must vertically contain the pointer's Y.) A
+			// degenerate span (zero extent) can't determine a lane — skip the
+			// filter (defensive; jsdom rects are all-zero).
+			const mainStart = mainAxis === 'vertical' ? rect.top : rect.left
+			const mainEnd = mainAxis === 'vertical' ? rect.bottom : rect.right
+			if (mainEnd > mainStart && (pointMain < mainStart || pointMain > mainEnd)) continue
+			const diff = crossCoord(c) - pointCross
+			const abs = Math.abs(diff)
+			if (diff * centricSign >= 0) {
+				if (!centric || abs < Math.abs(crossCoord(center(centric)) - pointCross)) centric = target
+			} else if (!excentric || abs < Math.abs(crossCoord(center(excentric)) - pointCross)) {
+				excentric = target
+			}
+		} else {
+			// Reorder/insert zones live along the main axis (begin / end). They
+			// flank the pointer's **cross-axis** lane: only consider a gap whose
+			// cross-axis span encompasses the pointer, so a gap on a different
+			// toolbar (same main coord, far cross coord) never opens. (For a
+			// vertical toolbar the cross axis is X, so the gap must horizontally
+			// contain the pointer's X.) A degenerate span skips the filter.
+			const crossStart = mainAxis === 'vertical' ? rect.left : rect.top
+			const crossEnd = mainAxis === 'vertical' ? rect.right : rect.bottom
+			if (crossEnd > crossStart && (pointCross < crossStart || pointCross > crossEnd)) continue
+			const mc = mainCoord(c)
+			if (mc <= pointMain) {
+				if (!begin || mc > mainCoord(center(begin))) begin = target
+			} else if (!end || mc < mainCoord(center(end))) end = target
+		}
+
+		const contained = rectContainsPoint(rect, point)
+		const distance = contained ? 0 : rectDistanceToPoint(rect, point)
+		if (
+			!nearest ||
+			(contained && !nearestContained) ||
+			(contained === nearestContained && distance < nearestDistance)
+		) {
+			nearest = target
+			nearestDistance = distance
+			nearestContained = contained
+		}
+	}
+
+	return { begin, end, centric, excentric, nearest }
+}
+
 function setTargetState(
 	target: PaletteDragTarget | undefined,
 	state: { active?: boolean; proximity?: boolean }
@@ -711,6 +900,11 @@ export function isIgnoredToolbarSpace(
 	target: Pick<PaletteToolbarSpace, 'direction' | 'index' | 'toolbar'>,
 	dragged: PaletteDragging
 ): boolean {
+	// A whole-toolbar drag never merges into another toolbar — dropping a
+	// toolbar onto a toolbar space would concatenate its tools and lose the
+	// toolbar's separation. Only item/span drags (single or multi-select)
+	// merge; toolbars must land in a track/stack space as their own toolbar.
+	if (dragged.wholeToolbar) return true
 	if (target.toolbar === dragged.toolbar) return true
 	const preview = dragged.toolbarPreview
 	if (!preview || target.toolbar !== preview.toolbar) return false
@@ -767,6 +961,7 @@ function moveToolbarToTrack(
 		toolbar: target.toolbar,
 		track: reorderTarget.track,
 		trackIndex: reorderTarget.trackIndex,
+		wholeToolbar: dragging.wholeToolbar,
 	}
 }
 
@@ -775,6 +970,43 @@ function moveToolbarToStack(
 	target: PaletteToolbarDrag,
 	stackTarget: PaletteStackDragTarget
 ): PaletteDragging | undefined {
+	// Item-drag shell: the unit toolbar may live in the ephemeral shell
+	// track rather than `dragging.track` (proxy re-linking), in which case
+	// `removeToolbarFromDragTrack` bails. Handle the shell directly: drop
+	// the (empty) shell track from the ephemeral border, then insert the
+	// unit toolbar as a singleton track in the target border. The live
+	// toolbar preview (origin re-insert) is cleared first so the item isn't
+	// duplicated — removal stays coupled to placement.
+	if (dragging.toolbarPreview) {
+		clearToolbarPreview(dragging)
+		dragging = palettes.dragging ?? dragging
+	}
+	const shellTrackIndex = dragging.border.indexOf(dragging.track)
+	const shellSlotIndex = dragging.track.findIndex((slot) => slot.toolbar === dragging.toolbar)
+	if (shellSlotIndex >= 0) {
+		dragging.track.splice(shellSlotIndex, 1)
+		if (dragging.track.length === 0 && shellTrackIndex >= 0)
+			dragging.border.splice(shellTrackIndex, 1)
+		const insertion = insertTrackWithToolbar(stackTarget.border, stackTarget.index, target.toolbar)
+		dragging.createdTracks.push(insertion.track)
+		return {
+			border: stackTarget.border,
+			createdTracks: dragging.createdTracks,
+			index: 0,
+			palette: target.palette,
+			region: stackTarget.region,
+			sourceItems: dragging.sourceItems,
+			sourceBorder: stackTarget.border,
+			sourceRegion: stackTarget.region,
+			sourceTrack: insertion.track,
+			sourceTrackIndex: insertion.trackIndex,
+			sourceTrackWasSingleton: true,
+			toolbar: target.toolbar,
+			track: insertion.track,
+			trackIndex: insertion.trackIndex,
+			wholeToolbar: dragging.wholeToolbar,
+		}
+	}
 	const removal = removeToolbarFromDragTrack(dragging, target.toolbar)
 	if (!removal) return undefined
 	const targetTrackIndex =
@@ -800,6 +1032,7 @@ function moveToolbarToStack(
 		toolbar: target.toolbar,
 		track: insertion.track,
 		trackIndex: insertion.trackIndex,
+		wholeToolbar: dragging.wholeToolbar,
 	}
 }
 
@@ -845,6 +1078,7 @@ function createToolbarDragging(target: PaletteToolbarDrag): PaletteDragging | un
 		toolbar: target.toolbar,
 		track: target.track,
 		trackIndex: target.trackIndex,
+		wholeToolbar: true,
 	}
 }
 
@@ -875,18 +1109,8 @@ function createItemDragging(
 			},
 		}
 	}
-	if (target.toolbar[target.itemIndex] !== target.item) return undefined
-	// Detach-on-activate: the item stays in its toolbar until the pointer
-	// moves past the 4px activation threshold. Detaching on pointerdown
-	// removes the item from the live layout before the drag even starts, so
-	// a plain click (or any pre-activation render) shows the tool as
-	// disappeared — and if activation then fails to re-insert (stale refs,
-	// no target), the tool is lost. The `dragging` shell is built now, but
-	// the splice runs in `onActivate` via the unproxied `live` refs (the
-	// `$state` proxy breaks `indexOf` identity and write-through on the
-	// proxied session), followed by an immediate `previewToolbarItems`
-	// re-insert at the origin index — net length unchanged, tool stays
-	// visible for the whole drag (see `onActivate` in `paletteItemDrag`).
+	if (JSON.stringify(target.toolbar[target.itemIndex]) !== JSON.stringify(target.item))
+		return undefined
 	const toolbar: PaletteToolbar = [target.item]
 	const track: PaletteTrack = [{ space: 0, toolbar }]
 	const border: PaletteBorder = [track]
@@ -897,11 +1121,17 @@ function createItemDragging(
 		palette: target.palette,
 		region: target.region,
 		sourceItems: [target.item],
-		sourceBorder: border,
+		// True origin (not the ephemeral shell): the stack-ignore rule
+		// (`isIgnoredStackSpace`) compares the drop border against
+		// `sourceBorder`, and the track-ignore rule needs the real
+		// `sourceTrackIndex`. The shell border/track are fresh arrays, so
+		// recording them here would make every stack look foreign (never
+		// ignored) and mis-report the source lane.
+		sourceBorder: target.border,
 		sourceRegion: target.region,
-		sourceTrack: track,
-		sourceTrackIndex: 0,
-		sourceTrackWasSingleton: true,
+		sourceTrack: target.track,
+		sourceTrackIndex: target.trackIndex,
+		sourceTrackWasSingleton: false,
 		toolbar,
 		track,
 		trackIndex: 0,
@@ -955,6 +1185,8 @@ function paletteToolbarDragApplyMove(
 	state: {
 		proximityTargets: PaletteDragTarget[]
 		activeTarget: PaletteDragTarget | undefined
+		/** Dwell bookkeeping for stack-space commits (create a track after ~1s). */
+		stackDwell?: { element: HTMLElement; since: number }
 	}
 ): PaletteDragTarget | undefined {
 	if (!palettes.dragging) return state.activeTarget
@@ -964,6 +1196,30 @@ function paletteToolbarDragApplyMove(
 	const currentIndex = dragging.index
 	const currentDirection = regionDirection(dragging.region)
 	if (currentIndex < 0) return state.activeTarget
+	// Directional open-zones: every non-ignored slot is a candidate; the four
+	// nearests (left/right/up/down) stay open far before the pointer arrives so
+	// the user always sees the landing spots — no dead zone. This is **visual
+	// only** (`data-proximity`); the commit target is resolved separately below
+	// from the halo-based wrappers (containment/nearness), which keeps
+	// "previewing is moving" semantics unchanged.
+	const candidates = directionalCandidates(point, dragging, {
+		originRect: ctx.originRect,
+		dragStart: ctx.dragStart,
+	})
+	const directional = nearestDragTargetsByDirection(
+		candidates,
+		point,
+		currentDirection,
+		dragging.region
+	)
+	const openTargets = [
+		directional.begin,
+		directional.end,
+		directional.centric,
+		directional.excentric,
+	].filter((candidate): candidate is PaletteDragTarget => Boolean(candidate))
+
+	// Commit target: halo-based resolution (unchanged semantics).
 	const nextToolbarTarget = resolveToolbarSpaceTarget(point)
 	const toolbarTarget =
 		nextToolbarTarget && !isIgnoredToolbarSpace(nextToolbarTarget, dragging)
@@ -989,43 +1245,41 @@ function paletteToolbarDragApplyMove(
 			? nextStackTarget
 			: undefined
 	const resolvedTarget = resolveDragTarget({ toolbarTarget, trackTarget, stackTarget })
+
 	for (const proximityTarget of state.proximityTargets) {
-		if (proximityTarget.element === resolvedTarget?.element) continue
-		if (proximityTarget.element === toolbarTarget?.element) continue
-		if (proximityTarget.element === trackTarget?.element) continue
-		if (proximityTarget.element === stackTarget?.element) continue
+		const stillOpen =
+			proximityTarget === resolvedTarget ||
+			openTargets.some((open) => open.element === proximityTarget.element)
+		if (stillOpen) continue
 		setTargetState(proximityTarget, {})
 	}
-	state.proximityTargets = [toolbarTarget, trackTarget, stackTarget].filter(
-		(candidate): candidate is PaletteDragTarget => Boolean(candidate)
-	)
+	state.proximityTargets = openTargets
 	let activeTarget = state.activeTarget
 	if (activeTarget?.element !== resolvedTarget?.element) {
 		setTargetState(activeTarget, {})
 		activeTarget = resolvedTarget
 	}
 	state.activeTarget = activeTarget
-	for (const proximityTarget of state.proximityTargets) {
-		setTargetState(proximityTarget, {
-			active: proximityTarget.element === resolvedTarget?.element && proximityTarget.contained,
-			proximity: true,
-		})
+	for (const proximityTarget of openTargets) {
+		if (proximityTarget.element === resolvedTarget?.element) continue
+		setTargetState(proximityTarget, { proximity: true })
 	}
 	if (resolvedTarget?.kind === 'toolbar-space') {
+		delete state.stackDwell
+		// Mark the commit target before previewing: a toolbar-space commit is
+		// immediate (no dwell), and the directional open-zones loop above skips
+		// the resolved target, so without this the reorder gap would open
+		// without ever showing its highlight (`data-proximity`/`data-active`).
+		setTargetState(resolvedTarget, { active: resolvedTarget.contained, proximity: true })
 		previewToolbarItems(dragging, resolvedTarget.toolbar, resolvedTarget.index)
 		return state.activeTarget
 	}
-	// No toolbar-space under the pointer: keep any live toolbar preview
-	// until a *contained* track/stack move commits it. Item drags detach at
-	// activation and immediately re-insert via `previewToolbarItems` in
-	// `onActivate`, so the tool is always visible inside a toolbar — there
-	// is no invisible limbo state to materialise here.
-	const competingTarget = resolvedTarget?.contained ? resolvedTarget : undefined
-	if (dragging.toolbarPreview && competingTarget) clearToolbarPreview(dragging)
-	dragging = palettes.dragging
-	if (!dragging) return state.activeTarget
-	if (dragging.toolbarPreview && !competingTarget) return state.activeTarget
-	if (!resolvedTarget?.contained) {
+	// No toolbar-space under the pointer. Limbo (far from every slot): keep any
+	// live toolbar preview so the tool stays visible — "removal is coupled to
+	// placement", so clearing it here would drop the tool into an invisible
+	// shell. Just nudge the toolbar within its own track.
+	if (!resolvedTarget) {
+		delete state.stackDwell
 		resizeDraggedToolbarFromPointer(
 			dragging,
 			currentDirection,
@@ -1036,6 +1290,28 @@ function paletteToolbarDragApplyMove(
 		)
 		return state.activeTarget
 	}
+	// Stack-space commit is gated on a ~1s dwell (the pointer rests on the zone
+	// before a new track is created). Toolbar/track-space commits are immediate.
+	if (resolvedTarget.kind === 'stack-space') {
+		const now = performance.now()
+		const dwell = state.stackDwell
+		if (!dwell || dwell.element !== resolvedTarget.element) {
+			state.stackDwell = { element: resolvedTarget.element, since: now }
+			return state.activeTarget
+		}
+		if (now - dwell.since < STACK_CREATE_DWELL_MS) return state.activeTarget
+		state.stackDwell = undefined
+	}
+	// A track/stack target commits the move whether the pointer is contained or
+	// only within the proximity halo: drop zones are thin (often zero-width)
+	// gaps, so requiring pixel containment made near-misses silently no-op and
+	// the tool appear lost. `contained` now only drives `data-active`.
+	setTargetState(resolvedTarget, { active: resolvedTarget.contained, proximity: true })
+	if (dragging.toolbarPreview) clearToolbarPreview(dragging)
+	dragging = palettes.dragging
+	if (!dragging) return state.activeTarget
+	// Same-track adjacent gap: reflow (resize) rather than remove+re-insert to
+	// avoid flicker while nudging within the toolbar's own lane.
 	if (
 		resolvedTarget.kind === 'track-space' &&
 		resolvedTarget.track === currentTrack &&
@@ -1104,6 +1380,7 @@ function startPaletteToolbarDragSession(
 	const moveState: {
 		proximityTargets: PaletteDragTarget[]
 		activeTarget: PaletteDragTarget | undefined
+		stackDwell?: { element: HTMLElement; since: number }
 	} = { proximityTargets: [], activeTarget: undefined }
 	let activated = false
 
@@ -1121,16 +1398,24 @@ function startPaletteToolbarDragSession(
 				// The session object is plain until now; assigning it into the
 				// `$state` store deep-proxies the nested arrays, which breaks
 				// the ephemeral border/track `indexOf` identity the preview
-				// path relies on. Re-link the shell through the store's own
+				// path relies on (`border.indexOf(track)` is -1 even for the
+				// live shell). Re-link the shell through the store's own
 				// proxies before activating, so every reference below shares
-				// the same proxied arrays.
+				// the same proxied arrays — and re-point the session's
+				// `track`/`toolbar` at the store's live shell (not the stale
+				// pre-proxy objects), otherwise `previewToolbarItems` bails
+				// on the identity check and the tool is lost.
 				palettes.dragging = dragging
 				const active = palettes.dragging as PaletteDragging
 				const liveTrack = active.border[0]
 				if (liveTrack) {
 					active.track = liveTrack
+					dragging.track = liveTrack
 					const liveToolbar = liveTrack[0]?.toolbar
-					if (liveToolbar) active.toolbar = liveToolbar
+					if (liveToolbar) {
+						active.toolbar = liveToolbar
+						dragging.toolbar = liveToolbar
+					}
 				}
 				options?.onActivate?.(active)
 			}
@@ -1151,6 +1436,7 @@ function startPaletteToolbarDragSession(
 			for (const proximityTarget of moveState.proximityTargets) setTargetState(proximityTarget, {})
 			moveState.proximityTargets = []
 			moveState.activeTarget = undefined
+			moveState.stackDwell = undefined
 			dragStart = undefined
 			if (!activated) {
 				// Never detached (detach-on-activate): drop any pending detach
@@ -1663,11 +1949,18 @@ export function paletteItemDrag(
 				// proxied `active.pendingDetach` misses and write-through
 				// fails. The origin arrays are plain, so identity holds here.
 				// Then preview re-inserts the item at its origin index — net
-				// length unchanged, tool stays visible for the whole drag.
-				if (active.pendingDetach) delete active.pendingDetach
-				const at = live.toolbar.indexOf(live.item)
-				const idx = at >= 0 ? at : live.itemIndex
-				if (idx >= 0 && idx < live.toolbar.length) live.toolbar.splice(idx, 1)
+				// length unchanged, the tool stays visible for the drag.
+				const pending = drag.dragging.pendingDetach
+				if (pending) {
+					delete drag.dragging.pendingDetach
+					// Structural match, not `indexOf`: after a prior move the
+					// live toolbar holds `$state` proxies whose identity no
+					// longer `===` the raw `pending.item`, so `indexOf` misses
+					// and the detach silently no-ops (the item duplicates).
+					const fingerprint = JSON.stringify(pending.item)
+					const at = live.toolbar.findIndex((it) => JSON.stringify(it) === fingerprint)
+					if (at >= 0) live.toolbar.splice(at, 1)
+				}
 				previewToolbarItems(active, live.toolbar, live.itemIndex)
 			},
 			onClick: () => {

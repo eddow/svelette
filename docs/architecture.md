@@ -361,7 +361,9 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   stay inert after an edit-mode close.
 - The toolbar `commandBox` item is a real **commands-combo-box** (`commandBoxPresenter`): a text
   input + results popup that runs commands inline (Ctrl-Shift-P style). It is a **run** surface,
-  independent of the console. Selecting a toolbar item (`pointerdown` → `palettes.inspecting`)
+  independent of the console. When the palette is R/W, the combobox shell also carries a **square
+  edit-icon button** (`command-box-open-editor`, `✎` — a plain button, not a toggle) that opens
+  the console in **edit mode**. Selecting a toolbar item (`pointerdown` → `palettes.inspecting`)
   highlights it (`data-inspected`) and renders a **presentation-only** configurator in the
   console's single *Details* panel (`console-details-panel`) — the same place shows the add
   variants when an add entry is selected (inspect and add are never used together).

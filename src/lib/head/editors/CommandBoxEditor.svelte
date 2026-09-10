@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { openConsole } from '$lib/palette/console.svelte'
 	import {
 		handlePaletteCommandBoxInputKeydown,
 		handlePaletteCommandChipKeydown,
@@ -34,6 +35,15 @@
 	function execute(entryId: string) {
 		model.execute(entryId)
 		open = false
+		inputEl?.blur()
+	}
+
+	// The console auto-detects this command box and opens in edit mode, so the
+	// button is the edit entry point for a toolbar that already runs commands
+	// inline. It is a plain action button (not a toggle/check-button): pressing
+	// it always opens the console in edit mode.
+	function openEditor() {
+		openConsole('edit')
 		inputEl?.blur()
 	}
 </script>
@@ -97,6 +107,17 @@
 					}
 				}}
 			/>
+			<button
+				type="button"
+				class="palette-default-command-open"
+				data-testid="command-box-open-editor"
+				aria-label="Edit toolbars"
+				title="Edit toolbars"
+				onmousedown={(event) => event.preventDefault()}
+				onclick={openEditor}
+			>
+				✎
+			</button>
 		</div>
 	</div>
 	{#if open}
