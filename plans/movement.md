@@ -31,7 +31,64 @@
   next movement design; parking is not persisted — `serialize`/`hydrate`
   round-trip borders only.)
 
-## Next design (to be written)
+## Toolbar slide: grab-point formula
 
-- Drop-target model, hit-testing approach, preview affordance, session
-  lifecycle, and invariants — see `docs/movements.md` stub.
+Sliding a whole toolbar must feel like grabbing it at a fixed point: the cursor
+stays at the same spot on the toolbar while it moves. Because toolbars have
+fixed pixel widths, the slide is computed in **pixels**, not track fractions —
+the gaps absorb all motion and the toolbar span is constant.
+
+Notation (pixels, horizontal; swap axes for vertical):
+
+- `G` — total free gap width: `G = trackWidth − Σ toolbar[n].width`.
+- `budget = (spaces[i] + spaces[i+1]) × G` — the two gaps around toolbar `i`,
+  constant during the drag, so the neighbours never move.
+- `left = Σ_{n<i} (spaces[n] × G + toolbar[n].width)` — fixed left boundary
+  (everything before the leading gap); `right = left + budget` — right boundary
+  (`total-width` when `i` is the last toolbar, i.e. the trailing gap is
+  implicit).
+- `x₀`, `t₀` — cursor and toolbar left-edge positions captured on mousedown.
+
+Per move, keep the cursor at its fixed offset on the toolbar and clip the
+leading gap to its budget:
+
+```
+x    = clamp(x − x₀ + t₀, left, right)
+spaces[i]   = (x − left) / G
+spaces[i+1] = budget − spaces[i]
+```
+
+applied via `resizeToolbar(track, i, spaces[i] / budget)`. `resizeToolbar` folds
+the implicit trailing gap in when `i = n − 1`, so the last toolbar is not a
+special case. In the code, `left`/`right` are read directly from the
+`.toolbar-track-slot` siblings (leading/trailing gap elements), which sit
+between the two gaps — no registry or width bookkeeping is needed.
+
+## TODO
+
+toolbar reposition movement lag when no devTools
+
+We should try this way perhaps:
+
+```ts
+let latestX = 0;
+let latestY = 0;
+let dirty = false;
+
+// 1. Just store the latest coordinates asynchronously
+window.addEventListener('pointermove', (e) => {
+  latestX = e.clientX;
+  latestY = e.clientY;
+  dirty = true;
+}, { passive: true });
+
+// 2. Drive the DOM update loop synchronously on the render tick
+function update() {
+  if (dirty) {
+    dragItem.style.transform = `translate3d(${latestX}px, ${latestY}px, 0)`;
+    dirty = false;
+  }
+  requestAnimationFrame(update);
+}
+requestAnimationFrame(update);
+```

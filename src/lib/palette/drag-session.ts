@@ -27,14 +27,14 @@ function eventPoint(event: PointerEvent): PaletteDragPoint {
 	return { x: event.clientX, y: event.clientY }
 }
 
-function releaseCapture(element: HTMLElement, pointerId: number | undefined): void {
-	if (pointerId === undefined || !element.isConnected) return
-	if (!element.hasPointerCapture(pointerId)) return
-	try {
-		element.releasePointerCapture(pointerId)
-	} catch {
-		return
-	}
+function releaseCapture(_element: HTMLElement, _pointerId: number | undefined): void {
+	// Intentionally no pointer capture: capturing on the drag-origin element
+	// retargets every subsequent pointermove to that element, so `target`
+	// never leaves the origin toolbar/track and the highlighted DZs freeze
+	// on the drag origin. The window-level move/up listeners below already
+	// receive all events without capture, letting hover bubble from the
+	// element actually under the cursor (so tb/track/stack can change).
+	return
 }
 
 export function startPaletteDragSession(options: PaletteDragSessionOptions): () => void {
@@ -101,11 +101,9 @@ export function startPaletteDragSession(options: PaletteDragSessionOptions): () 
 	}
 
 	if (element?.isConnected) {
-		try {
-			element.setPointerCapture(pointerId)
-		} catch {
-			// Ignore capture failures when the pointer source is removed during startup.
-		}
+		// Intentionally no `setPointerCapture`: see `releaseCapture` above.
+		// Window listeners receive every move/up without retargeting hover.
+		void pointerId
 	}
 	ownerWindow.addEventListener('pointermove', handleMove)
 	ownerWindow.addEventListener('pointerup', handleUp)

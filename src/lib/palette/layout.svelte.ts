@@ -10,6 +10,7 @@
  */
 
 import type { Action } from 'svelte/action'
+import { startPaletteDragSession } from './drag-session'
 import { isEditableTool, isRunTool, PaletteError, palettes } from './palette.svelte'
 import type {
 	Palette,
@@ -340,6 +341,220 @@ export function nearestFreeItemSpaceAfter(
 }
 
 /**
+ * Check whether the simulated drag selection covers a whole toolbar.
+ */
+export function isDraggingWholeToolbar(toolbar: PaletteToolbar): boolean {
+	const dragging = palettes.dragging
+	if (!dragging || dragging.tools.length === 0) return false
+	if (dragging.tools.length !== toolbar.length) return false
+	return dragging.tools.every((tool) => toolbar.includes(tool))
+}
+
+/**
+ * Index of the track the drag would empty: the track holding a single toolbar
+ * whose whole content is dragged (`dragged[0]`'s toolbar size = dragged size
+ * and its track size = 1). Returns `undefined` when no such track exists in
+ * `border` (partial drag, multi-toolbar track, or another border/region).
+ */
+export function draggingEmptiesTrackIndex(border: PaletteBorder): number | undefined {
+	const dragging = palettes.dragging
+	if (!dragging || dragging.tools.length === 0) return undefined
+	for (let index = 0; index < border.length; index += 1) {
+		const track = border[index]
+		if (track.length !== 1) continue
+		const sole = track[0]
+		if (sole && isDraggingWholeToolbar(sole.toolbar)) return index
+	}
+	return undefined
+}
+
+/**
+ * Pixel bounds for sliding a toolbar along its track. Toolbars have fixed
+ * pixel widths, so the slide must be computed in pixels — a fraction-of-track
+ * model drifts because the gaps absorb the toolbar widths (see
+ * `plans/movement.md`). The toolbar's `.toolbar-track-slot` parent sits
+ * between the leading gap (`space[slot]`) and trailing gap (`space[slot + 1]`)
+ * elements; their edges are fixed during the slide, so the free span is the
+ * trailing-gap end minus the leading-gap start minus the toolbar span.
+ */
+function toolbarSlideBounds(
+	toolbarElement: HTMLElement,
+	direction: PaletteOrientation
+): { start: number; available: number } | undefined {
+	const slot = toolbarElement.parentElement
+	const before = slot?.previousElementSibling
+	const after = slot?.nextElementSibling
+	if (!(before instanceof HTMLElement) || !(after instanceof HTMLElement)) return undefined
+	const horizontal = direction === 'horizontal'
+	const start = horizontal
+		? before.getBoundingClientRect().left
+		: before.getBoundingClientRect().top
+	const end = horizontal
+		? after.getBoundingClientRect().right
+		: after.getBoundingClientRect().bottom
+	const rect = toolbarElement.getBoundingClientRect()
+	const available = end - start - (horizontal ? rect.width : rect.height)
+	return available > 0 ? { start, available } : undefined
+}
+
+/**
+ * Grab offset of the cursor *within* the toolbar, in pixels. Captured once on
+ * mousedown; `slideToolbarInTrack` keeps it fixed so the cursor stays at the
+ * same point on the toolbar (natural grab).
+ */
+export function toolbarGrabOffset(options: {
+	toolbarElement: HTMLElement
+	clientX: number
+	clientY: number
+	direction: PaletteOrientation
+}): number {
+	const rect = options.toolbarElement.getBoundingClientRect()
+	const horizontal = options.direction === 'horizontal'
+	return (horizontal ? options.clientX : options.clientY) - (horizontal ? rect.left : rect.top)
+}
+
+/**
+ * Slide a whole toolbar along its track so it follows the pointer.
+ *
+ * Only valid when the drag selection covers the whole toolbar
+ * (`isDraggingWholeToolbar`). The cursor keeps its pixel grab offset on the
+ * toolbar; the leading gap is clipped to the free span between the surrounding
+ * gap elements, so `space[slot] + space[slot + 1]` stays constant and the
+ * neighbours never move (see `plans/movement.md` "Toolbar slide"). The
+ * implicit trailing gap is folded in by `resizeToolbar` when `slot` is the
+ * last toolbar.
+ */
+export function slideToolbarInTrack(options: {
+	track: PaletteTrack
+	toolbar: PaletteToolbar
+	toolbarElement: HTMLElement
+	clientX: number
+	clientY: number
+	direction: PaletteOrientation
+	grabOffset: number
+}): void {
+	const { track, toolbar, toolbarElement, clientX, clientY, direction, grabOffset } = options
+	if (!isDraggingWholeToolbar(toolbar)) return
+	const bounds = toolbarSlideBounds(toolbarElement, direction)
+	if (!bounds) return
+	const slot = track.findIndex((entry) => entry.toolbar === toolbar)
+	if (slot < 0) return
+	const horizontal = direction === 'horizontal'
+	const offset = (horizontal ? clientX : clientY) - grabOffset - bounds.start
+	resizeToolbar(track, slot, Math.min(Math.max(offset, 0), bounds.available) / bounds.available)
+}
+
+/**
+ * Start a simulated drag session: `dragging` is set to the tool list and the
+ * pointer is captured (no user interaction needed); on pointer-up (or
+ * cancel/blur/hidden) `dragging` clears. The `dragging` class on the IDE root
+ * follows via the `paletteRoot` mirror. When a whole toolbar is dragged, the
+ * toolbar follows the pointer via `transform` (gaps untouched) and a single
+ * `resizeToolbar` commit lands on release (see `slideToolbarInTrack`).
+ *
+ * Whole-toolbar slide state is measured once at grab time. During the drag
+ * the gaps are never resized — the toolbar only follows the pointer via
+ * `element.style.transform = translate3d(...)`; a single `resizeToolbar`
+ * commit lands on release. Bounds must be measured once: after the transform
+ * applies, `getBoundingClientRect()` includes the visual offset, so
+ * re-measuring mid-drag would drift.
+ */
+function startSimulatedDrag(options: {
+	event: PointerEvent
+	palette: Palette
+	tools: PaletteToolbarItem[]
+	label: string
+	track?: PaletteTrack
+	toolbar?: PaletteToolbar
+	toolbarElement?: HTMLElement
+	direction?: PaletteOrientation
+	grabOffset?: number
+}): void {
+	const { event, palette, tools, label } = options
+	palettes.dragging = { palette, tools }
+	console.log('[palette dragging]', label)
+	const slide =
+		options.track &&
+		options.toolbar &&
+		options.toolbarElement &&
+		options.direction &&
+		isDraggingWholeToolbar(options.toolbar)
+			? (() => {
+					const bounds = toolbarSlideBounds(options.toolbarElement!, options.direction!)
+					const slot = options.track!.findIndex((entry) => entry.toolbar === options.toolbar)
+					if (!bounds || slot < 0) return undefined
+					const axis = options.direction === 'horizontal' ? event.clientX : event.clientY
+					const offset0 = Math.min(
+						Math.max(axis - (options.grabOffset ?? 0) - bounds.start, 0),
+						bounds.available
+					)
+					return { bounds, slot, offset0 }
+				})()
+			: undefined
+	// Batch the latest pointer coordinate to one transform per frame: capture
+	// raw coordinates immediately on move, perform the compositor-only write
+	// right before paint. Rapid pointermove bursts never queue multiple
+	// read→write→layout cycles per frame.
+	let latestX = event.clientX
+	let latestY = event.clientY
+	let ticking = false
+	let frame = 0
+	function flushTransform(): void {
+		frame = 0
+		ticking = false
+		if (!slide || !options.toolbarElement || !options.direction) return
+		const horizontal = options.direction === 'horizontal'
+		const pointer = horizontal ? latestX : latestY
+		const clamped = Math.min(
+			Math.max(pointer - (options.grabOffset ?? 0) - slide.bounds.start, 0),
+			slide.bounds.available
+		)
+		const delta = clamped - slide.offset0
+		options.toolbarElement.style.transform =
+			delta === 0
+				? ''
+				: horizontal
+					? `translate3d(${delta}px, 0, 0)`
+					: `translate3d(0, ${delta}px, 0)`
+	}
+	startPaletteDragSession({
+		event,
+		onMove: (_snapshot, moveEvent) => {
+			latestX = moveEvent.clientX
+			latestY = moveEvent.clientY
+			if (!slide) return
+			if (!ticking) {
+				ticking = true
+				if (typeof requestAnimationFrame === 'undefined') {
+					flushTransform()
+					return
+				}
+				frame = requestAnimationFrame(flushTransform)
+			}
+		},
+		onStop: ({ reason }) => {
+			if (frame !== 0 && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(frame)
+			frame = 0
+			ticking = false
+			// Single commit on release: resize the gaps once, then clear the
+			// visual transform so layout takes over at the committed position.
+			if (slide && options.track && options.toolbarElement && options.direction) {
+				const horizontal = options.direction === 'horizontal'
+				const pointer = horizontal ? latestX : latestY
+				const clamped = Math.min(
+					Math.max(pointer - (options.grabOffset ?? 0) - slide.bounds.start, 0),
+					slide.bounds.available
+				)
+				resizeToolbar(options.track, slide.slot, clamped / slide.bounds.available)
+				options.toolbarElement.style.transform = ''
+			}
+			if (palettes.dragging?.palette === palette) palettes.dragging = undefined
+			console.log('[palette dragging] stop:', reason)
+		},
+	})
+}
+
+/**
  * Passive drop-zone placeholder.
  *
  * Movement was stripped: space actions register nothing and clean up only
@@ -391,17 +606,29 @@ export function paletteToolbarDrag(
 		if (!live.palette.editing) return
 		if (event.button !== 0) return
 		if (isEditableTarget(event.target)) return
-		// Simulated drag: clicking the toolbar selects its whole content.
-		// No preview/commit yet — just centralise on `palettes.dragging`.
+		// Whole-toolbar drag: mousedown on the toolbar (not on a tool)
+		// selects its whole content; the toolbar then slides along its track
+		// following the pointer until mouse-up clears `dragging`.
 		if ((event.target as HTMLElement | null)?.closest?.('.toolbar-item')) return
 		event.preventDefault()
-		palettes.dragging = { palette: live.palette, tools: [...live.toolbar] }
-		console.log(
-			'[palette dragging] toolbar:',
-			live.toolbar.map((item) =>
-				'tool' in item && typeof item.tool === 'string' ? item.tool : item.editor
-			)
-		)
+		startSimulatedDrag({
+			event,
+			palette: live.palette,
+			tools: [...live.toolbar],
+			label: `toolbar: ${live.toolbar
+				.map((item) => ('tool' in item && typeof item.tool === 'string' ? item.tool : item.editor))
+				.join(', ')}`,
+			track: live.track,
+			toolbar: live.toolbar,
+			toolbarElement: element,
+			direction: live.direction,
+			grabOffset: toolbarGrabOffset({
+				toolbarElement: element,
+				clientX: event.clientX,
+				clientY: event.clientY,
+				direction: live.direction,
+			}),
+		})
 	}
 	element.addEventListener('pointerdown', onPointerDown)
 	return {
@@ -435,13 +662,15 @@ export function paletteItemDrag(
 			border: live.border,
 			trackIndex: live.trackIndex,
 		}
-		// Simulated drag: clicking a tool selects that single tool.
-		// No preview/commit yet — just centralise on `palettes.dragging`.
-		palettes.dragging = { palette: live.palette, tools: [live.item] }
-		console.log(
-			'[palette dragging] tool:',
-			'tool' in live.item && typeof live.item.tool === 'string' ? live.item.tool : live.item.editor
-		)
+		// Simulated drag: mousedown on a tool selects that single tool;
+		// pointer capture holds until mouse-up, which clears `dragging`.
+		// Nothing moves yet.
+		startSimulatedDrag({
+			event,
+			palette: live.palette,
+			tools: [live.item],
+			label: `tool: ${'tool' in live.item && typeof live.item.tool === 'string' ? live.item.tool : live.item.editor}`,
+		})
 	}
 
 	element.addEventListener('pointerdown', onPointerDown)

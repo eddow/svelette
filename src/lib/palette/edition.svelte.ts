@@ -44,6 +44,7 @@ export {
 } from './drawer-state.svelte'
 export {
 	actualTrackSpaceAt,
+	draggingEmptiesTrackIndex,
 	insertToolbar,
 	insertTrackWithToolbar,
 	type PaletteItemDragTarget,

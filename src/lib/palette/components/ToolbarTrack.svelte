@@ -2,6 +2,7 @@
 	import type { SvelteHTMLElements } from 'svelte/elements'
 	import { actualTrackSpaceAt, paletteTrackSpace } from '../layout.svelte'
 	import type { Palette as PaletteRuntime } from '../palette.svelte'
+	import { palettes } from '../palette.svelte'
 	import type {
 		PaletteBorder,
 		PaletteRegion,
@@ -33,13 +34,15 @@
 
 	// Perpendicular DZs: the gaps between toolbars along the track axis
 	// (track spaces). When inside the track but not inside a toolbar, only
-	// the hovered gap highlights. Gated on edit mode.
+	// the hovered gap highlights. Gated on edit mode AND active drag.
 	let hoveredTrackSpace = $state<number | undefined>(undefined)
 	// Track-gap fallback, driven by the toolbar's own pointer events (not a
 	// document query): the hovered toolbar reports its slot index + side via
 	// `requestTrackGap`. Scoped by construction — only this track's child can
 	// call it, so no cross-track/stack leak is possible.
 	let trackGapFallback = $state<{ slot: number; side: 'before' | 'after' } | undefined>(undefined)
+
+	const isDragging = $derived(palettes.dragging?.palette === palette)
 
 	function requestTrackGap(
 		slot: number,
@@ -58,7 +61,7 @@
 	}
 
 	function onTrackPointerMove(event: PointerEvent): void {
-		if (!palette.editing) {
+		if (!palette.editing || !isDragging) {
 			hoveredTrackSpace = undefined
 			return
 		}
@@ -88,7 +91,7 @@
 	}
 
 	function isTrackSpaceHighlighted(index: number): boolean {
-		if (!palette.editing) return false
+		if (!palette.editing || !isDragging) return false
 		if (hoveredTrackSpace !== undefined) return hoveredTrackSpace === index
 		if (trackGapFallback === undefined) return false
 		const gap =
@@ -97,7 +100,7 @@
 	}
 
 	$effect(() => {
-		if (!palette.editing) {
+		if (!palette.editing || !isDragging) {
 			hoveredTrackSpace = undefined
 			trackGapFallback = undefined
 		}

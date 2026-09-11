@@ -10,8 +10,28 @@ move/up, blur/cancel cleanup; no preview element). Components:
 
 `PaletteBorders` = `{ top, right, bottom, left }`. A border is a list of tracks;
 a track is a list of `{ space, toolbar }` slots; a toolbar is a list of items.
-`space` values are normalized to unit (`clampUnit`); the trailing gap is implicit
-(`1 − Σ spaces`).
+
+### Track spacing invariant
+
+Each toolbar in a track carries a `space` — the proportion of *the track's free
+space (everything not taken by toolbars)* allotted to the gap **before** that
+toolbar. A track of `N` toolbars therefore stores `N` `space` values, plus one
+**implicit trailing gap** `space[N]` (the gap after the last toolbar). The full
+gap array is:
+
+```
+spaces[0..N] = [space₀, space₁, …, spaceₙ₋₁, 1 − Σ space₀..ₙ₋₁]
+```
+
+so the sum of all gaps (stored + implicit) is always exactly `1`. Every
+`space` is clamped to unit (`clampUnit`), and the trailing gap is whatever
+remains of the total — never stored, always derived.
+
+- `actualTrackSpaceAt(track, i)` — the gap at position `i` (`i ≤ N`).
+- `actualTrackSpaces(track)` — the full `spaces[0..N]` array (sums to 1).
+- `insertToolbar` / `removeToolbar` / `resizeToolbar` splice this array and
+  rewrite the `N` stored slots via `applyTrackSpaces`; the trailing gap stays
+  implicit, so the total is conserved across every mutation.
 
 - `Ide` takes four optional borders + center slot, publishes `{ palette }` scope.
 - `ToolbarBorder` renders one region (`inverse` reverses track order for

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { SvelteHTMLElements } from 'svelte/elements'
-	import { paletteStackSpace } from '../layout.svelte'
+	import { draggingEmptiesTrackIndex, paletteStackSpace } from '../layout.svelte'
 	import type { Palette as PaletteRuntime } from '../palette.svelte'
+	import { palettes } from '../palette.svelte'
 	import type { PaletteBorder, PaletteRegion, PaletteScope } from '../types'
 	import ToolbarTrack from './ToolbarTrack.svelte'
 
@@ -40,12 +41,15 @@
 	// Parallel DZs: the virtual tracks between real tracks (track0.5, track1.5…).
 	// They always exist as zero-size stack spaces. Hovering a track (including
 	// its toolbars/tools) highlights the two surrounding it; hovering a DZ
-	// directly highlights only that one. Gated on edit mode.
+	// directly highlights only that one. Gated on edit mode AND active drag —
+	// no highlight (and no hover-state tracking) when not dragging.
 	let activeTrack = $state<number | undefined>(undefined)
 	let hoveredStack = $state<number | undefined>(undefined)
 
+	const isDragging = $derived(palettes.dragging?.palette === palette)
+
 	function onBorderPointerMove(event: PointerEvent): void {
-		if (!palette.editing) {
+		if (!palette.editing || !isDragging) {
 			activeTrack = undefined
 			hoveredStack = undefined
 			return
@@ -75,19 +79,27 @@
 	}
 
 	function isStackHighlighted(stackIndex: number): boolean {
-		if (!palette.editing) return false
+		if (!palette.editing || !isDragging) return false
+		// When the drag would empty its origin track (whole content of a
+		// single-toolbar track), the two stacks touching that track are not
+		// candidates — dropping there would re-create the same spot once the
+		// origin vanishes. Only a stack after another (surviving) track
+		// highlights. Applies to direct hover too.
+		const emptied = draggingEmptiesTrackIndex(border)
+		if (emptied !== undefined && (stackIndex === emptied || stackIndex === emptied + 1))
+			return false
 		if (hoveredStack !== undefined) return stackIndex === hoveredStack
 		if (activeTrack === undefined) return false
 		return stackIndex === activeTrack || stackIndex === activeTrack + 1
 	}
 
 	function isStackHovered(stackIndex: number): boolean {
-		if (!palette.editing) return false
+		if (!palette.editing || !isDragging) return false
 		return hoveredStack === stackIndex
 	}
 
 	$effect(() => {
-		if (!palette.editing) {
+		if (!palette.editing || !isDragging) {
 			activeTrack = undefined
 			hoveredStack = undefined
 		}

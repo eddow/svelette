@@ -39,6 +39,7 @@ export {
 } from './keys'
 export {
 	clampUnit,
+	draggingEmptiesTrackIndex,
 	isEditableTarget,
 	type PaletteOrientation,
 	paletteRoot,

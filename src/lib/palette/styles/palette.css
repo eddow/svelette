@@ -143,6 +143,14 @@
 	flex: 0 0 auto;
 }
 
+/* While dragging, the grabbed toolbar follows the pointer via `transform`
+ * (compositor only — gaps stay untouched until release). Hint the layer on
+ * the dragged toolbar and keep transform off any transition so it tracks
+ * the pointer 1:1. */
+.palette-ide.dragging .toolbar {
+	will-change: transform;
+}
+
 .toolbar-track-space {
 	display: flex;
 	min-width: 0;
@@ -257,12 +265,16 @@
 }
 
 .palette-ide.editing:not(.dragging) .toolbar-border.palette-horizontal .toolbar:hover,
-.palette-ide.editing:not(.dragging) .palette-parking.palette-horizontal .toolbar:hover {
+.palette-ide.editing:not(.dragging) .palette-parking.palette-horizontal .toolbar:hover,
+.palette-ide.editing.dragging .toolbar-border.palette-horizontal .toolbar[data-dragged='true'],
+.palette-ide.editing.dragging .palette-parking.palette-horizontal .toolbar[data-dragged='true'] {
 	padding: 0 calc(var(--palette-dz-size) * 2);
 }
 
 .palette-ide.editing:not(.dragging) .toolbar-border.palette-vertical .toolbar:hover,
-.palette-ide.editing:not(.dragging) .palette-parking.palette-vertical .toolbar:hover {
+.palette-ide.editing:not(.dragging) .palette-parking.palette-vertical .toolbar:hover,
+.palette-ide.editing.dragging .toolbar-border.palette-vertical .toolbar[data-dragged='true'],
+.palette-ide.editing.dragging .palette-parking.palette-vertical .toolbar[data-dragged='true'] {
 	padding: calc(var(--palette-dz-size) * 2) 0;
 }
 
