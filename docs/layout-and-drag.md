@@ -52,25 +52,29 @@ Helpers: `actualTrackSpaceAt`, `insertToolbar` (split a gap), `removeToolbar`
 | Action                | Element              | Behaviour                                              |
 | --------------------- | -------------------- | ------------------------------------------------------ |
 | `paletteRoot`         | IDE root             | tabindex, editing/dragging classes + data flags, keydown tool resolution, clears `inspecting` when edit ends |
-| `paletteToolbarDrag`  | toolbar              | edit-mode `pointerdown` starts a toolbar drag          |
-| `paletteItemDrag`     | item guard (edit)    | `pointerdown` inspects the item, then starts an item drag (click without activation restores at origin) |
+| `paletteToolbarDrag`  | toolbar              | edit-mode `pointerdown` starts a toolbar drag (`phase: 'toolbar'`) |
+| `paletteItemDrag`     | item guard (edit)    | `pointerdown` inspects the item, then starts a tool-set drag (`phase: 'tools'`) |
 | `paletteItemShield`   | item content         | blocks interaction while editing                       |
-| `paletteToolbarSpace` / `paletteTrackSpace` / `paletteStackSpace` | gaps | register hit-test geometry + catalogue drop zones |
 
 Actions return `{ destroy() }` (Svelte action contract). `paletteRoot` runs
 `$effect`s inside the action body — legal because actions execute in component
-init context. Drop zones also accept native catalogue drops via
-`bindPaletteCatalogDrop`.
+init context.
+
+Gaps are hit-tested by the components' own `pointermove` handlers, not by
+actions: `ToolbarTrack` reads `[data-track-space-index]` and `Toolbar` reads
+`[data-item-space-index]` / `[data-item-index]`. The former
+`paletteToolbarSpace` / `paletteTrackSpace` / `paletteStackSpace` stubs
+registered nothing and were removed.
 
 ## Pointer drag sessions
 
-`startPaletteDragSession({ event, onMove, onStop })`: captures the pointer,
-listens on `window` (`pointermove`/`pointerup`/`pointercancel`, `blur`,
-`visibilitychange`), ignores foreign `pointerId`s, stops when `buttons === 0`.
-4px activation threshold lives in the caller. Item drags detach the item into an
-ephemeral single-item toolbar on `pointerdown` but defer the re-insertion preview
-to activation; toolbar previews commit through `previewToolbarItems` /
-`finalizeToolbarPreview`.
+`startPaletteDragSession({ event, onMove, onStop })`: listens on `window`
+(`pointermove`/`pointerup`/`pointercancel`, `blur`, `visibilitychange`),
+ignores foreign `pointerId`s, stops when `buttons === 0`. There is no pointer
+capture (it would freeze the drop zones on the drag origin) and no activation
+threshold (a drag is live from `pointerdown`; commits happen on hover, not on
+release). See `docs/movements.md` for the session model, the `phase` field,
+and the commit rules.
 
 `$state` proxy hazards (found via e2e — see `docs/architecture.md` §20):
 
@@ -80,6 +84,10 @@ to activation; toolbar previews commit through `previewToolbarItems` /
   (`active.track = active.border[0]`, …) before running `onActivate`.
 - Catalogue `onDrop` inserts unconditionally when no preview committed — the old
   seed-border `===` guard fails under `$state` proxies and silently drops inserts.
+- A toolbar inserted into a reactive track is a *proxy* of the array that was
+  passed in. Reusing the raw local reference makes later identity lookups
+  (`findIndex`, `includes`) miss — read the placed toolbar back out of the
+  track instead.
 
 ## Catalogue (HTML5) drag
 

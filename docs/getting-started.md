@@ -25,7 +25,8 @@ Scratch files go in `sandbox/` (git-ignored), never `/tmp`.
 
 The demo is a **Stellar Outpost** space-colony sim (`src/lib/demo/palette.svelte.ts`)
 rendering an `Ide` with all four borders plus center content. It ships **three
-configurations** (`demoConfigs`), each with its own reset button in the demo bar:
+preset loads** (`demoConfigs`) in the demo bar — plain command buttons (no
+toggle state), each loading a fresh clone of its configuration's layout:
 
 - **R/W + command box** — read-write; a `commandBox` combobox on the top toolbar
   runs commands inline, and the console opens in **edit mode**.
@@ -57,8 +58,9 @@ Interactions to try:
 2. **Drawers**: `More` (left) opens a horizontal popup (axis inversion).
 3. **Console**: `` ` `` key or `Terminal` button opens the overlay (toggles — the
    same shortcut closes it); parking + add-to-toolbar live in the console.
-4. **Modes / reset**: the demo bar loads each configuration and per-mode reset
-   round-trips through `localStorage` (`svelette-demo-layout-v1`).
+4. **Presets / save-load**: the demo bar loads each preset configuration, and a
+   save/load button group round-trips the layout through `localStorage`
+   (`svelette-demo-layout-v1`).
 
 Theme control: the `theme` tool (`light`/`dark`/`system`) resolves via
 `prefers-color-scheme` and syncs `.palette-default-theme-light` + `data-theme` +

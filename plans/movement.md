@@ -1,10 +1,7 @@
-# Movement — restart from scratch
+# Movement
 
-> Status: **stripped (2026-09-10).** Drag & drop, hit-testing, preview, and the
-> catalogue-insert session were removed; `palettes.dragging` is an empty
-> placeholder and item guards only inspect. The next movement design starts
-> here. Permanent principles will live in `docs/movements.md` (currently a
-> stub).
+> Status: **slide/restructure mode + slide anchor fixed (2026-09-12).** Permanent
+> principles live in `docs/movements.md`.
 
 ## The target behaviour (agreed, kept)
 
@@ -19,76 +16,88 @@
    - **editing the editor** (a "delete" button on its edit surface), or
    - **moving it to parking, then removing it from parking.**
 
-## What remains (verified)
+## Done (2026-09-12)
 
-- Layout primitives: `insertToolbar`, `insertTrackWithToolbar`,
-  `removeToolbar`, `removeEmptyTrack`, `removePaletteItem`, `resizeToolbar`.
-- Passive space/drag action stubs; `paletteItemDrag` only inspects.
-- Deletion via editor edit surface ("delete" button) — `removePaletteItem` +
-  `configuratorPresenter.removable/remove()` + `BaseConfigurator` delete button.
-- Deletion via parking → remove — `Parking.svelte` binds the live top border;
-  `×` removes from the real border. (Parking rows are display-only until the
-  next movement design; parking is not persisted — `serialize`/`hydrate`
-  round-trip borders only.)
+### The drag mode — one derived question, cached
 
-## Toolbar slide: grab-point formula
+`PaletteDragging.phase` (`'tools' | 'toolbar'`, recorded at grab) is replaced by
+`mode` (`'restructure' | 'slide'`), derived and cached from a single question:
+*"is there anything else than my dragged tools left in my toolbar?"*
 
-Sliding a whole toolbar must feel like grabbing it at a fixed point: the cursor
-stays at the same spot on the toolbar while it moves. Because toolbars have
-fixed pixel widths, the slide is computed in **pixels**, not track fractions —
-the gaps absorb all motion and the toolbar span is constant.
+- **no** → `'slide'` — the toolbar itself moves (true for a whole-toolbar grab
+  *and* for a lone tool).
+- **yes** → `'restructure'` — a subset to extract.
 
-Notation (pixels, horizontal; swap axes for vertical):
+`refreshDragMode` runs after every structural commit, so a restructure becomes a
+slide once its tools land in their own toolbar, and a slide becomes a restructure
+as soon as a merge puts other tools beside it. `resolveDragMode` is exported for
+tests; the mode is never re-derived per pointer move.
 
-- `G` — total free gap width: `G = trackWidth − Σ toolbar[n].width`.
-- `budget = (spaces[i] + spaces[i+1]) × G` — the two gaps around toolbar `i`,
-  constant during the drag, so the neighbours never move.
-- `left = Σ_{n<i} (spaces[n] × G + toolbar[n].width)` — fixed left boundary
-  (everything before the leading gap); `right = left + budget` — right boundary
-  (`total-width` when `i` is the last toolbar, i.e. the trailing gap is
-  implicit).
-- `x₀`, `t₀` — cursor and toolbar left-edge positions captured on mousedown.
+### Bug: sliding continued after a cast into another toolbar
 
-Per move, keep the cursor at its fixed offset on the toolbar and clip the
-leading gap to its budget:
+`ToolbarTrack`'s arming `$effect` only ever *armed* — it had no `else` branch —
+so after an item-space merge it re-armed `retargetToolbarSlide` over the merged
+target toolbar, undoing the commit's `clearToolbarSlide()` in the same tick. The
+toolbar kept translating even though the selection was no longer a whole toolbar.
+
+Fixed by gating the effect on `mode === 'slide'` and adding the explicit
+`else { clearToolbarSlide() }` disarm path. Merely not arming is not enough when
+a live session is already transform-ing an element.
+
+### Bug: ~toolbar-size position error when a restructure became a slide
+
+`retargetToolbarSlide` anchored on `bounds.start` — the **leading gap's** edge —
+while the toolbar actually rests at `bounds.start + leadingGapWidth`, and
+`transform` is applied relative to that resting position. The anchor is now that
+resting offset, so `clampSlideDelta` returns a shift from resting:
 
 ```
-x    = clamp(x − x₀ + t₀, left, right)
-spaces[i]   = (x − left) / G
-spaces[i+1] = budget − spaces[i]
+offset0 = rect.left − bounds.start
+delta   = clamp(pointer − grabOffset − bounds.start) − offset0
 ```
 
-applied via `resizeToolbar(track, i, spaces[i] / budget)`. `resizeToolbar` folds
-the implicit trailing gap in when `i = n − 1`, so the last toolbar is not a
-special case. In the code, `left`/`right` are read directly from the
-`.toolbar-track-slot` siblings (leading/trailing gap elements), which sit
-between the two gaps — no registry or width bookkeeping is needed.
+A whole-toolbar grab has shift `0` at arm time (no jump); a recentered
+restructure now lands centered on the cursor instead of one gap-width off.
+
+Also removed a self-mutating effect dependency: the effect read
+`dragging.grabOffset` while `retargetToolbarSlide` wrote it, re-running the
+effect with different measured bounds. The effect no longer reads the field.
+
+## Done earlier (2026-09-12)
+
+### Track-gap commit — duplication fixed
+
+**Two toolbars both holding the same tools** after hovering a gap with a tool
+set. Two causes:
+
+1. The drag kind was re-derived from the tool lists on every commit, so a drag
+   starting in a multi-tool toolbar read as "partial" forever.
+2. An identity bug: a toolbar stored in a `$state` border is a *proxy* of the
+   array inserted, so reusing the raw local reference made every later
+   `findIndex`/`includes` miss — which disabled the flanking-gap guard and let a
+   second hover insert a duplicate. The commit now reads the placed toolbar back
+   out of the track.
+
+### Declarative slide arming, one slide math, dead code
+
+`rearmToolbarSlide` + `tick().then(querySelector(…))` replaced by the track's
+`$effect`. `slideToolbarInTrack` (never called) deleted; `clampSlideDelta` is the
+single copy of the slide math. Removed the track-gap fallback
+(`trackGapFallback`/`onTrackGap`/`slotIndex`), `isTrackSpaceHighlighted` and its
+CSS, the three inert space actions, `PaletteItemDragTarget.itemIndex`, the debug
+`console.log`s, and the false 4px-threshold comment.
 
 ## TODO
 
-toolbar reposition movement lag when no devTools
+- **Stack DZ commits** (tool → new singleton toolbar in a track/stack).
+- **Parking is not persisted** — `serialize`/`hydrate` round-trip borders only;
+  parking rows are display-only until the next movement design.
+- **Auto-hover-commit sharp edge** — a released drag over a gap commits even
+  without intent. Options: keep as agreed ("previewing is moving"), require a
+  click before promotion, or promote only after the pointer rests ~150ms.
+- **Cross-axis gap commit** — a gap commit currently lands *between* toolbars.
+  Should a commit near the track's cross-axis edge instead insert a **new
+  track** (a parallel stack)?
+- **Single-toolbar-per-item invariant** — confirm `composer`/`drawer` toolbars
+  still cannot be split across toolbars by dragging after a placement.
 
-We should try this way perhaps:
-
-```ts
-let latestX = 0;
-let latestY = 0;
-let dirty = false;
-
-// 1. Just store the latest coordinates asynchronously
-window.addEventListener('pointermove', (e) => {
-  latestX = e.clientX;
-  latestY = e.clientY;
-  dirty = true;
-}, { passive: true });
-
-// 2. Drive the DOM update loop synchronously on the render tick
-function update() {
-  if (dirty) {
-    dragItem.style.transform = `translate3d(${latestX}px, ${latestY}px, 0)`;
-    dirty = false;
-  }
-  requestAnimationFrame(update);
-}
-requestAnimationFrame(update);
-```

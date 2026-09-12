@@ -17,9 +17,9 @@
 
 	const LAYOUT_STORAGE_KEY = 'svelette-demo-layout-v1'
 
-	// The active demo configuration. Default to `rw-combobox` (matches the legacy
-	// demo); each mode has its own reset button that re-loads its layout.
-	let activeMode = $state<DemoMode>('rw-combobox')
+	// Preset loads are plain commands, not toggle state: each button loads a
+	// fresh clone of its configuration's layout. The demo seeds `rw-combobox`
+	// (matches the legacy demo).
 
 	function readStoredLayout(): SerializedPaletteLayout | undefined {
 		try {
@@ -117,9 +117,8 @@
 		}
 	}
 
-	/** Load a demo configuration (its own reset button re-applies this). */
-	function loadMode(id: DemoMode) {
-		activeMode = id
+	/** Load a preset configuration layout (a command, not a state). */
+	function loadPreset(id: DemoMode) {
 		const layout = demoLayoutFor(id)
 		top.splice(0, top.length, ...structuredClone(layout.top))
 		left.splice(0, left.length, ...structuredClone(layout.left))
@@ -129,14 +128,16 @@
 		demoState.lastAction = `Loaded "${demoConfigs.find((c) => c.id === id)?.label ?? id}"`
 	}
 
-	function resetLayout() {
-		try {
-			localStorage.removeItem(LAYOUT_STORAGE_KEY)
-		} catch {
-			// ignore
+	/** Load the persisted layout from localStorage (explicit load command). */
+	function loadStoredLayout() {
+		const stored = readStoredLayout()
+		if (!stored) {
+			demoState.lastAction = 'No saved layout'
+			return
 		}
-		loadMode(activeMode)
-		demoState.lastAction = 'Layout reset'
+		applyStoredLayout(stored)
+		layoutRestored = true
+		demoState.lastAction = 'Layout loaded'
 	}
 </script>
 
@@ -147,20 +148,19 @@
 			{#each demoConfigs as config (config.id)}
 				<button
 					type="button"
-					class={activeMode === config.id ? 'is-active' : undefined}
 					data-testid={`mode-${config.id}`}
-					aria-pressed={activeMode === config.id ? 'true' : 'false'}
 					title={config.description}
-					onclick={() => loadMode(config.id)}
+					onclick={() => loadPreset(config.id)}
 				>
 					{config.label}
 				</button>
 			{/each}
 		</div>
-		<button type="button" data-testid="save-layout" onclick={persistLayout}>Save layout</button>
-		<button type="button" data-testid="reset-layout" onclick={resetLayout}>
-			Reset {demoConfigs.find((c) => c.id === activeMode)?.label ?? 'layout'}
-		</button>
+		<div class="demo-io" role="group" aria-label="Layout persistence">
+			<button type="button" data-testid="save-layout" onclick={persistLayout}>Save layout</button>
+			<button type="button" data-testid="load-layout" onclick={loadStoredLayout}>Load layout</button
+			>
+		</div>
 		{#if layoutRestored}
 			<span class="demo-state" data-testid="layout-restored">Layout restored from localStorage</span
 			>
@@ -263,7 +263,8 @@
 		align-items: center;
 		gap: 0.5rem;
 	}
-	.demo-modes button {
+	.demo-modes button,
+	.demo-io button {
 		padding: 0.34rem 0.72rem;
 		border: 1px solid rgba(71, 85, 105, 0.9);
 		border-radius: 999px;
@@ -272,13 +273,21 @@
 		cursor: pointer;
 		font-size: 0.82rem;
 	}
-	.demo-modes button.is-active,
-	.demo-modes button[aria-pressed='true'] {
-		border-color: #60a5fa;
-		background: #1d4ed8;
-		color: #eff6ff;
+	.demo-io {
+		display: inline-flex;
+		align-items: center;
 	}
-	:global(html[data-theme='light']) .demo-modes button {
+	.demo-io button:first-child {
+		border-start-end-radius: 0;
+		border-end-end-radius: 0;
+	}
+	.demo-io button:last-child {
+		border-start-start-radius: 0;
+		border-end-start-radius: 0;
+		border-inline-start-width: 0;
+	}
+	:global(html[data-theme='light']) .demo-modes button,
+	:global(html[data-theme='light']) .demo-io button {
 		border-color: rgba(148, 163, 184, 0.9);
 		background: #ffffff;
 		color: #0f172a;

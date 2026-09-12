@@ -15,6 +15,9 @@ import { isEditableTool, isRunTool, PaletteError, palettes } from './palette.sve
 import type {
 	Palette,
 	PaletteBorder,
+	PaletteDragging,
+	PaletteDragMode,
+	PaletteDragOrigin,
 	PaletteRegion,
 	PaletteToolbar,
 	PaletteToolbarItem,
@@ -24,41 +27,15 @@ import type {
 /** Orientation of a toolbar's item axis. */
 export type PaletteOrientation = 'horizontal' | 'vertical'
 
-export type PaletteTrackSpace = {
-	border: PaletteBorder
-	direction: PaletteOrientation
-	index: number
-	palette: Palette
-	region: PaletteRegion
-	track: PaletteTrack
-	trackIndex: number
-}
-
 export type PaletteItemDragTarget = {
 	border: PaletteBorder
 	direction: PaletteOrientation
 	item: PaletteToolbarItem
-	itemIndex: number
 	palette: Palette
 	region: PaletteRegion
 	toolbar: PaletteToolbar
 	track: PaletteTrack
 	trackIndex: number
-}
-
-export type PaletteStackSpace = {
-	border: PaletteBorder
-	direction: PaletteOrientation
-	index: number
-	palette: Palette
-	region: PaletteRegion
-}
-
-export type PaletteToolbarSpace = {
-	direction: PaletteOrientation
-	index: number
-	palette: Palette
-	toolbar: PaletteToolbar
 }
 
 export type PaletteToolbarDrag = {
@@ -159,6 +136,184 @@ export function removePaletteItem(
 		removeToolbar(track, toolbar)
 		removeEmptyTrack(border, track)
 	}
+	return true
+}
+
+/**
+ * Commit the dragged tools into a target toolbar at a specific item-space index.
+ *
+ * Removes every dragged tool from the origin toolbar (pruning the origin
+ * toolbar/track when emptied), splices them into the target toolbar at
+ * `itemSpaceIndex`, then refreshes `palettes.dragging.origin` so subsequent
+ * DZ hovers always move from the current location.
+ *
+ * When the origin and target are the same toolbar, the removal happens first
+ * (so indices shift), then the insertion uses the adjusted index.
+ *
+ * @returns `true` when the commit succeeded (dragging is active and the target
+ *   toolbar is valid).
+ */
+export function commitDraggedToItemSpace(
+	targetToolbar: PaletteToolbar,
+	targetTrack: PaletteTrack,
+	targetBorder: PaletteBorder,
+	itemSpaceIndex: number
+): boolean {
+	const dragging = palettes.dragging
+	if (!dragging) return false
+	const { tools, origin } = dragging
+	if (tools.length === 0) return false
+
+	// Remove every dragged tool from the origin toolbar.
+	const originToolbar = origin.toolbar
+	const originTrack = origin.track
+	const originBorder = origin.border
+	for (const tool of tools) {
+		const idx = originToolbar.indexOf(tool)
+		if (idx >= 0) originToolbar.splice(idx, 1)
+	}
+	// Prune origin if emptied.
+	if (originToolbar.length === 0) {
+		removeToolbar(originTrack, originToolbar)
+		removeEmptyTrack(originBorder, originTrack)
+	}
+
+	// Compute the insertion index. When origin and target are the same
+	// toolbar, the removal above already shifted indices — the item-space
+	// index is still correct because item-space indices are between items,
+	// and we removed the dragged items from the toolbar. But we need to
+	// account for the fact that the dragged items are no longer there.
+	// The item-space index is a position between remaining items, so it's
+	// already correct after removal.
+	const clampedIndex = Math.min(Math.max(itemSpaceIndex, 0), targetToolbar.length)
+	targetToolbar.splice(clampedIndex, 0, ...tools)
+
+	// Refresh the origin so subsequent DZ hovers move from the new location.
+	dragging.origin = {
+		toolbar: targetToolbar,
+		track: targetTrack,
+		border: targetBorder,
+	}
+	// Merging into another toolbar ends toolbar sliding: the selection is now a
+	// subset of a toolbar again ("yes, something else is in my toolbar"), so
+	// the toolbar is no longer what is being moved. Recompute the mode and
+	// actively disarm slide-follow — the track's arming `$effect` no longer
+	// matches a `'slide'` mode, so it will not re-arm it.
+	if (refreshDragMode(dragging) !== 'slide') clearToolbarSlide()
+
+	return true
+}
+
+/**
+ * Commit the dragged tools into a track gap, entering (or continuing)
+ * toolbar sliding.
+ *
+ * The behaviour is decided by the session's *derived* mode, never by
+ * re-deriving the selection kind from the tool lists per hover:
+ *
+ * - `'restructure'`: the dragged tools are a subset, so they are extracted
+ *   from `origin.toolbar` into a fresh singleton toolbar placed at the gap
+ *   (splitting it 50/50) and the origin is pruned when emptied.
+ * - `'slide'`: `origin.toolbar` itself is relocated at the gap. Identity is
+ *   preserved — the same toolbar object moves, it is never cloned and its
+ *   tools are never re-extracted. This is what makes a repeated commit at the
+ *   same gap a no-op.
+ *
+ * `dragging.origin` is refreshed in both cases so the next hover moves from
+ * the new location, `trackSpaceIndex` is adjusted for the index shift caused
+ * by pruning the origin from a shared track, and the mode is recomputed once
+ * the placement lands (a restructure becomes a slide: its tools now sit alone
+ * in their own toolbar).
+ *
+ * @returns `true` when a toolbar was (re)placed at the gap.
+ */
+export function commitDraggedToTrackSpace(
+	targetTrack: PaletteTrack,
+	targetBorder: PaletteBorder,
+	trackSpaceIndex: number
+): boolean {
+	const dragging = palettes.dragging
+	if (!dragging) return false
+	const { tools, origin } = dragging
+	if (tools.length === 0) return false
+
+	const originToolbar = origin.toolbar
+	const originTrack = origin.track
+	const originBorder = origin.border
+
+	// Read the mode *before* mutating: it describes the current selection.
+	// `'slide'` = the toolbar itself is what is being moved; `'restructure'` =
+	// the dragged tools are a subset to extract.
+	const mode = resolveDragMode(dragging)
+
+	// While *sliding* a whole toolbar, the two gaps flanking it are not
+	// destinations — they are just that toolbar's own left/right spacing, so
+	// hovering them is "keep moving", not "drop here". Nothing to do (and
+	// nothing to even record: the caller keeps its hover memo).
+	//
+	// A restructure is different: extracting a tool out of a toolbar and
+	// dropping it into the gap right beside that toolbar is a perfectly good
+	// move, and must create the singleton there.
+	const originSlot = originTrack.findIndex((entry) => entry.toolbar === originToolbar)
+	if (mode === 'slide' && targetTrack === originTrack && originSlot >= 0) {
+		if (trackSpaceIndex === originSlot || trackSpaceIndex === originSlot + 1) return false
+	}
+
+	let destination: PaletteToolbar
+	// Slot the origin toolbar vacated, or `-1` when it is still there. Only a
+	// real removal shifts the gap indices of a shared track.
+	let prunedSlot = -1
+	if (mode === 'slide') {
+		// Slide: relocate the toolbar object itself at the gap — identity
+		// preserved, never cloned, so a commit at the same gap is idempotent.
+		prunedSlot = removeToolbar(originTrack, originToolbar)
+		removeEmptyTrack(originBorder, originTrack)
+		destination = originToolbar
+	} else {
+		// Restructure: extract the dragged tools out of the origin toolbar. The
+		// tools are moved by identity into a fresh singleton; the origin keeps
+		// whatever is left and is pruned (with its track) only when it empties.
+		for (const tool of tools) {
+			const index = originToolbar.indexOf(tool)
+			if (index >= 0) originToolbar.splice(index, 1)
+		}
+		if (originToolbar.length === 0) {
+			prunedSlot = removeToolbar(originTrack, originToolbar)
+			removeEmptyTrack(originBorder, originTrack)
+		}
+		destination = []
+	}
+
+	// The gap index was read before the prune; when the removed origin sat
+	// before the gap in a shared track, indices shifted down by one. Adjust
+	// before clamping so the toolbar lands where the pointer is.
+	let insertionIndex = trackSpaceIndex
+	if (targetTrack === originTrack && prunedSlot >= 0 && prunedSlot < trackSpaceIndex) {
+		insertionIndex -= 1
+	}
+	insertionIndex = Math.min(Math.max(insertionIndex, 0), targetTrack.length)
+	insertToolbar(targetTrack, insertionIndex, destination, 0.5)
+	if (mode === 'restructure') destination.push(...tools)
+
+	// Read the toolbar back out of the track rather than reusing the local
+	// reference. The border is reactive (`$state`), so the array stored in the
+	// track is a *proxy* of `destination`; keeping the raw reference would make
+	// every later identity lookup (`findIndex`, `includes`) miss, which is what
+	// let a second gap hover build a duplicate toolbar.
+	const placed = targetTrack[insertionIndex]?.toolbar ?? destination
+
+	// Refresh the origin so subsequent DZ hovers move from the new location.
+	dragging.origin = {
+		toolbar: placed,
+		track: targetTrack,
+		border: targetBorder,
+	}
+	// The placement is done: the selection now sits alone in its own toolbar,
+	// so the session is a slide from here on. Recomputing (rather than
+	// hard-coding `'slide'`) keeps the single rule — "anything else in my
+	// toolbar?" — authoritative for every commit.
+	refreshDragMode(dragging)
+
 	return true
 }
 
@@ -351,6 +506,31 @@ export function isDraggingWholeToolbar(toolbar: PaletteToolbar): boolean {
 }
 
 /**
+ * Derive the drag mode from the live selection: `'slide'` when the dragged
+ * tools are the *entire* content of their current toolbar (nothing else is
+ * left behind), `'restructure'` otherwise.
+ *
+ * This is the single question the whole drag engine asks: *"is there anything
+ * else than `dragging` in my toolbar?"* — no → the toolbar itself moves;
+ * yes → the selection is a subset being restructured.
+ */
+export function resolveDragMode(dragging: PaletteDragging): PaletteDragMode {
+	return isDraggingWholeToolbar(dragging.origin.toolbar) ? 'slide' : 'restructure'
+}
+
+/**
+ * Recompute `dragging.mode` after a structural change (a commit). Cached on
+ * the session rather than derived per pointer move, so a drag that started as
+ * a subset can *become* a slide once its tools are extracted into a toolbar of
+ * their own — and a slide can *become* a restructure once a merge puts other
+ * items back beside it. Returns the new mode.
+ */
+export function refreshDragMode(dragging: PaletteDragging): PaletteDragMode {
+	dragging.mode = resolveDragMode(dragging)
+	return dragging.mode
+}
+
+/**
  * Index of the track the drag would empty: the track holding a single toolbar
  * whose whole content is dragged (`dragged[0]`'s toolbar size = dragged size
  * and its track size = 1). Returns `undefined` when no such track exists in
@@ -398,6 +578,24 @@ function toolbarSlideBounds(
 }
 
 /**
+ * Clamp the pointer to the slide's free span and return the shift to apply.
+ * The single copy of the slide math — both the per-frame `transform` write and
+ * the release commit use it, so the visual position and the committed `space`
+ * can never disagree.
+ *
+ * `bounds.start` is the *leading gap's* edge, not the toolbar's resting
+ * position: the toolbar rests at `start + leadingGapWidth`. `offset0` is
+ * expressed in that same span space but measured from the resting position, so
+ * the subtraction below yields a shift from *resting* — exactly what
+ * `transform` is relative to.
+ */
+function clampSlideDelta(slide: ToolbarSlideSession, pointer: number, grabOffset: number): number {
+	const raw = pointer - grabOffset - slide.bounds.start
+	const clamped = Math.min(Math.max(raw, 0), slide.bounds.available)
+	return clamped - slide.offset0
+}
+
+/**
  * Grab offset of the cursor *within* the toolbar, in pixels. Captured once on
  * mousedown; `slideToolbarInTrack` keeps it fixed so the cursor stays at the
  * same point on the toolbar (natural grab).
@@ -414,184 +612,278 @@ export function toolbarGrabOffset(options: {
 }
 
 /**
- * Slide a whole toolbar along its track so it follows the pointer.
+ * Live toolbar-positioning (slide) session.
  *
- * Only valid when the drag selection covers the whole toolbar
- * (`isDraggingWholeToolbar`). The cursor keeps its pixel grab offset on the
- * toolbar; the leading gap is clipped to the free span between the surrounding
- * gap elements, so `space[slot] + space[slot + 1]` stays constant and the
- * neighbours never move (see `plans/movement.md` "Toolbar slide"). The
- * implicit trailing gap is folded in by `resizeToolbar` when `slot` is the
- * last toolbar.
+ * Armed when a whole toolbar is grabbed (`startSimulatedDrag`) and re-armed
+ * (`retargetToolbarSlide`) after every gap commit that (re)locates the
+ * dragged toolbar — including the first gap commit of a tool drag, which
+ * promotes the drag into toolbar positioning over the fresh singleton.
+ * Pointer moves only write `transform` (gaps untouched); mouse-up commits
+ * once via `resizeToolbar`. Cleared when the drag stops or stops being
+ * whole-toolbar (merged into another toolbar).
  */
-export function slideToolbarInTrack(options: {
+type ToolbarSlideSession = {
 	track: PaletteTrack
 	toolbar: PaletteToolbar
 	toolbarElement: HTMLElement
+	direction: PaletteOrientation
+	bounds: { start: number; available: number }
+	/**
+	 * Shift to apply at arm time, in the free span's space, *relative to the
+	 * toolbar's resting position*. `0` for a whole-toolbar grab (the cursor
+	 * already sits on the toolbar); non-zero for a recentered restructure
+	 * (the toolbar slides so the cursor holds its middle).
+	 */
+	offset0: number
+}
+
+let activeToolbarSlide: ToolbarSlideSession | undefined
+
+function clearToolbarSlideElement(): void {
+	const element = activeToolbarSlide?.toolbarElement
+	if (element instanceof HTMLElement && element.isConnected) element.style.transform = ''
+}
+
+/**
+ * Latest pointer position of the active drag, in client coordinates.
+ *
+ * Deliberately NOT reactive state: the slide-arming `$effect` only needs a
+ * one-shot anchor at arm time, and making it depend on the pointer would
+ * re-anchor `offset0` every frame (the toolbar would then never appear to
+ * move, since the delta is measured against the anchor).
+ */
+let dragPointer = { x: 0, y: 0 }
+
+/** Client coordinates of the active drag's latest pointer event. */
+export function lastDragPointer(): { x: number; y: number } {
+	return dragPointer
+}
+
+/**
+ * Clear the slide session, resetting any visual transform.
+ */
+export function clearToolbarSlide(): void {
+	clearToolbarSlideElement()
+	activeToolbarSlide = undefined
+}
+
+/**
+ * Element currently following the pointer in slide mode, or `undefined` when
+ * no slide session is armed. Read-only introspection for tests.
+ */
+export function activeToolbarSlideElement(): HTMLElement | undefined {
+	return activeToolbarSlide?.toolbarElement
+}
+
+/**
+ * (Re)arm slide-follow over `toolbar` in `track` at the current pointer.
+ *
+ * A relocated toolbar keeps its mousedown grab delta (`dragging.grabOffset`)
+ * even when the axis changes (x becomes y). A restructure drag has no such
+ * delta: `recenter` asks for half the fresh toolbar's size to be used, so the
+ * toolbar is grabbed by its middle.
+ *
+ * The slide is expressed as a shift from the toolbar's resting position, so
+ * the anchor is that resting offset inside the free span (`resting` = the
+ * leading gap's width). `clampSlideDelta` then returns
+ * `clamp(pointer − grabOffset − start) − resting`, which is the shift that
+ * puts the toolbar's left edge exactly at `pointer − grabOffset`:
+ *
+ * - a whole-toolbar grab: `pointer − grabOffset` is already the toolbar's
+ *   resting left edge, so the shift at arm time is `0` (no visual jump);
+ * - a recentered restructure: the shift is measured from the toolbar's resting
+ *   spot to the point where the cursor holds its middle, so the toolbar lands
+ *   centered on the cursor instead of a gap-width away from it.
+ *
+ * Called from an `$effect` (after the DOM has flushed), so the element is
+ * always the live one. It takes `grabOffset` explicitly rather than reading
+ * `dragging.grabOffset`: it *writes* that field when recentering, and an
+ * effect must not mutate a value it depends on.
+ *
+ * @returns `true` when slide-follow is armed (element connected, bounds measurable).
+ */
+export function retargetToolbarSlide(options: {
+	track: PaletteTrack
+	toolbar: PaletteToolbar
+	toolbarElement: HTMLElement
+	direction: PaletteOrientation
 	clientX: number
 	clientY: number
-	direction: PaletteOrientation
-	grabOffset: number
-}): void {
-	const { track, toolbar, toolbarElement, clientX, clientY, direction, grabOffset } = options
-	if (!isDraggingWholeToolbar(toolbar)) return
-	const bounds = toolbarSlideBounds(toolbarElement, direction)
-	if (!bounds) return
-	const slot = track.findIndex((entry) => entry.toolbar === toolbar)
-	if (slot < 0) return
-	const horizontal = direction === 'horizontal'
-	const offset = (horizontal ? clientX : clientY) - grabOffset - bounds.start
-	resizeToolbar(track, slot, Math.min(Math.max(offset, 0), bounds.available) / bounds.available)
+	/** Recenter the grab on the toolbar's middle (a fresh restructure toolbar). */
+	recenter?: boolean
+}): boolean {
+	const dragging = palettes.dragging
+	if (!dragging) return false
+	if (!(options.toolbarElement instanceof HTMLElement) || !options.toolbarElement.isConnected)
+		return false
+	const rect = options.toolbarElement.getBoundingClientRect()
+	const horizontal = options.direction === 'horizontal'
+	if (options.recenter) {
+		const size = horizontal ? rect.width : rect.height
+		if (size > 0) dragging.grabOffset = size / 2
+	}
+	const bounds = toolbarSlideBounds(options.toolbarElement, options.direction)
+	if (!bounds) return false
+	// The free span starts at the leading gap's edge, but the toolbar rests one
+	// leading-gap further in. Anchoring on that resting offset makes
+	// `clampSlideDelta` return a shift *from the resting position*, so
+	// `transform` (which is relative to the resting position) lines up.
+	const resting = (horizontal ? rect.left : rect.top) - bounds.start
+	if (activeToolbarSlide?.toolbarElement !== options.toolbarElement) clearToolbarSlideElement()
+	activeToolbarSlide = {
+		track: options.track,
+		toolbar: options.toolbar,
+		toolbarElement: options.toolbarElement,
+		direction: options.direction,
+		bounds,
+		offset0: resting,
+	}
+	return true
 }
 
 /**
  * Start a simulated drag session: `dragging` is set to the tool list and the
  * pointer is captured (no user interaction needed); on pointer-up (or
  * cancel/blur/hidden) `dragging` clears. The `dragging` class on the IDE root
- * follows via the `paletteRoot` mirror. When a whole toolbar is dragged, the
- * toolbar follows the pointer via `transform` (gaps untouched) and a single
- * `resizeToolbar` commit lands on release (see `slideToolbarInTrack`).
+ * follows via the `paletteRoot` mirror. While the session's mode is `'slide'`
+ * the toolbar follows the pointer via `transform` (gaps untouched) and a
+ * single `resizeToolbar` commit lands on release.
  *
- * Whole-toolbar slide state is measured once at grab time. During the drag
- * the gaps are never resized — the toolbar only follows the pointer via
+ * Slide-follow is armed at grab time for a whole-toolbar grab, and armed
+ * declaratively by the track after every gap commit (see `ToolbarTrack`), so
+ * a restructure promotes into sliding on its first gap. During the drag the
+ * gaps are never resized — the toolbar only follows the pointer via
  * `element.style.transform = translate3d(...)`; a single `resizeToolbar`
- * commit lands on release. Bounds must be measured once: after the transform
- * applies, `getBoundingClientRect()` includes the visual offset, so
- * re-measuring mid-drag would drift.
+ * commit lands on release. Bounds are measured per arm from the surrounding
+ * gap elements (untransformed siblings) plus the toolbar span, so re-measuring
+ * after a relocation never drifts.
  */
 function startSimulatedDrag(options: {
 	event: PointerEvent
 	palette: Palette
 	tools: PaletteToolbarItem[]
-	label: string
+	origin: PaletteDragOrigin
+	mode: PaletteDragMode
 	track?: PaletteTrack
 	toolbar?: PaletteToolbar
 	toolbarElement?: HTMLElement
 	direction?: PaletteOrientation
 	grabOffset?: number
 }): void {
-	const { event, palette, tools, label } = options
-	palettes.dragging = { palette, tools }
-	console.log('[palette dragging]', label)
-	const slide =
+	const { event, palette, tools, origin, mode } = options
+	// `grabOffset` is the pixel delta of the cursor within the dragged
+	// toolbar. A whole-toolbar grab captures it from the DOM; a restructure
+	// drag has none (recentered to the new toolbar's middle on its first
+	// track-gap commit, via `recenter`).
+	palettes.dragging = { palette, tools, origin, mode, grabOffset: options.grabOffset }
+	// Arm toolbar sliding when the selection is the whole toolbar. Gap commits
+	// re-arm it over the relocated/fresh toolbar via the track's `$effect`.
+	if (
 		options.track &&
 		options.toolbar &&
 		options.toolbarElement &&
 		options.direction &&
-		isDraggingWholeToolbar(options.toolbar)
-			? (() => {
-					const bounds = toolbarSlideBounds(options.toolbarElement!, options.direction!)
-					const slot = options.track!.findIndex((entry) => entry.toolbar === options.toolbar)
-					if (!bounds || slot < 0) return undefined
-					const axis = options.direction === 'horizontal' ? event.clientX : event.clientY
-					const offset0 = Math.min(
-						Math.max(axis - (options.grabOffset ?? 0) - bounds.start, 0),
-						bounds.available
-					)
-					return { bounds, slot, offset0 }
-				})()
-			: undefined
-	// Batch the latest pointer coordinate to one transform per frame: capture
-	// raw coordinates immediately on move, perform the compositor-only write
-	// right before paint. Rapid pointermove bursts never queue multiple
-	// read→write→layout cycles per frame.
+		mode === 'slide'
+	) {
+		retargetToolbarSlide({
+			track: options.track,
+			toolbar: options.toolbar,
+			toolbarElement: options.toolbarElement,
+			direction: options.direction,
+			clientX: event.clientX,
+			clientY: event.clientY,
+		})
+	} else {
+		clearToolbarSlide()
+	}
+	// TB-lag fix: store the latest coordinates on move (cheap, passive) and
+	// drive the compositor-only `transform` write from a persistent rAF loop.
+	// The old shape scheduled one rAF per move burst (`ticking` flag); under
+	// load that starves behind layout work and the toolbar visibly trails the
+	// cursor (worse with devTools closed, no throttling). A single loop that
+	// drains `dirty` every frame keeps at most one frame of lag.
 	let latestX = event.clientX
 	let latestY = event.clientY
-	let ticking = false
+	dragPointer = { x: latestX, y: latestY }
+	let dirty = false
 	let frame = 0
+	let stopped = false
+	function update(): void {
+		if (stopped) {
+			frame = 0
+			return
+		}
+		if (dirty) {
+			dirty = false
+			flushTransform()
+		}
+		frame = requestAnimationFrame(update)
+	}
 	function flushTransform(): void {
-		frame = 0
-		ticking = false
-		if (!slide || !options.toolbarElement || !options.direction) return
-		const horizontal = options.direction === 'horizontal'
+		// Resolve live: gap commits relocate the toolbar (and its element)
+		// mid-drag; the track's `$effect` re-arms over the current one.
+		const slide = activeToolbarSlide
+		const dragging = palettes.dragging
+		if (!slide || !dragging || dragging.palette !== palette) return
+		if (slide.toolbar !== dragging.origin.toolbar || slide.track !== dragging.origin.track) return
+		if (!slide.toolbarElement.isConnected) return
+		const horizontal = slide.direction === 'horizontal'
 		const pointer = horizontal ? latestX : latestY
-		const clamped = Math.min(
-			Math.max(pointer - (options.grabOffset ?? 0) - slide.bounds.start, 0),
-			slide.bounds.available
-		)
-		const delta = clamped - slide.offset0
-		options.toolbarElement.style.transform =
+		const delta = clampSlideDelta(slide, pointer, dragging.grabOffset ?? 0)
+		slide.toolbarElement.style.transform =
 			delta === 0
 				? ''
 				: horizontal
 					? `translate3d(${delta}px, 0, 0)`
 					: `translate3d(0, ${delta}px, 0)`
 	}
+	if (typeof requestAnimationFrame !== 'undefined') {
+		frame = requestAnimationFrame(update)
+	}
 	startPaletteDragSession({
 		event,
 		onMove: (_snapshot, moveEvent) => {
 			latestX = moveEvent.clientX
 			latestY = moveEvent.clientY
-			if (!slide) return
-			if (!ticking) {
-				ticking = true
-				if (typeof requestAnimationFrame === 'undefined') {
-					flushTransform()
-					return
-				}
-				frame = requestAnimationFrame(flushTransform)
-			}
+			dragPointer = { x: latestX, y: latestY }
+			dirty = true
+			// jsdom / no-rAF fallback: apply synchronously.
+			if (typeof requestAnimationFrame === 'undefined') flushTransform()
 		},
-		onStop: ({ reason }) => {
+		onStop: () => {
+			stopped = true
 			if (frame !== 0 && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(frame)
 			frame = 0
-			ticking = false
+			dirty = false
 			// Single commit on release: resize the gaps once, then clear the
 			// visual transform so layout takes over at the committed position.
-			if (slide && options.track && options.toolbarElement && options.direction) {
-				const horizontal = options.direction === 'horizontal'
-				const pointer = horizontal ? latestX : latestY
-				const clamped = Math.min(
-					Math.max(pointer - (options.grabOffset ?? 0) - slide.bounds.start, 0),
-					slide.bounds.available
-				)
-				resizeToolbar(options.track, slide.slot, clamped / slide.bounds.available)
-				options.toolbarElement.style.transform = ''
+			// The slot resolves live: gap commits relocate the toolbar mid-drag.
+			const slide = activeToolbarSlide
+			const dragging = palettes.dragging
+			if (
+				slide &&
+				dragging?.palette === palette &&
+				slide.toolbar === dragging.origin.toolbar &&
+				slide.track === dragging.origin.track
+			) {
+				const slot = dragging.origin.track.findIndex((entry) => entry.toolbar === slide.toolbar)
+				if (slot >= 0) {
+					const horizontal = slide.direction === 'horizontal'
+					const pointer = horizontal ? latestX : latestY
+					// Undo the anchor shift so the committed fraction matches
+					// what is on screen (`offset0` is the delta at arm time).
+					const delta = clampSlideDelta(slide, pointer, dragging.grabOffset ?? 0)
+					const offset = slide.offset0 + delta
+					resizeToolbar(dragging.origin.track, slot, offset / slide.bounds.available)
+				}
+				if (slide.toolbarElement.isConnected) slide.toolbarElement.style.transform = ''
+			} else if (slide?.toolbarElement.isConnected) {
+				slide.toolbarElement.style.transform = ''
 			}
+			activeToolbarSlide = undefined
 			if (palettes.dragging?.palette === palette) palettes.dragging = undefined
-			console.log('[palette dragging] stop:', reason)
 		},
 	})
-}
-
-/**
- * Passive drop-zone placeholder.
- *
- * Movement was stripped: space actions register nothing and clean up only
- * their highlight flags. They stay mounted so layout markup does not churn
- * while the next movement design lands.
- */
-function palettePassiveSpace(element: HTMLElement): ReturnType<Action> {
-	return {
-		destroy() {
-			delete element.dataset.active
-			delete element.dataset.proximity
-		},
-	}
-}
-
-export function paletteTrackSpace(
-	_element: HTMLElement,
-	target: PaletteTrackSpace | undefined
-): ReturnType<Action> {
-	if (!target?.palette) return
-	return palettePassiveSpace(_element)
-}
-
-export function paletteStackSpace(
-	_element: HTMLElement,
-	target: PaletteStackSpace | undefined
-): ReturnType<Action> {
-	if (!target?.palette) return
-	return palettePassiveSpace(_element)
-}
-
-export function paletteToolbarSpace(
-	_element: HTMLElement,
-	target: PaletteToolbarSpace | undefined
-): ReturnType<Action> {
-	if (!target?.palette) return
-	return palettePassiveSpace(_element)
 }
 
 export function paletteToolbarDrag(
@@ -615,9 +907,8 @@ export function paletteToolbarDrag(
 			event,
 			palette: live.palette,
 			tools: [...live.toolbar],
-			label: `toolbar: ${live.toolbar
-				.map((item) => ('tool' in item && typeof item.tool === 'string' ? item.tool : item.editor))
-				.join(', ')}`,
+			origin: { toolbar: live.toolbar, track: live.track, border: live.border },
+			mode: 'slide',
 			track: live.track,
 			toolbar: live.toolbar,
 			toolbarElement: element,
@@ -664,12 +955,15 @@ export function paletteItemDrag(
 		}
 		// Simulated drag: mousedown on a tool selects that single tool;
 		// pointer capture holds until mouse-up, which clears `dragging`.
-		// Nothing moves yet.
+		// Nothing moves yet. The mode starts as `'restructure'` (a subset being
+		// extracted), unless the tool is alone in its toolbar — then it is a
+		// slide from the start: "nothing else in my toolbar".
 		startSimulatedDrag({
 			event,
 			palette: live.palette,
 			tools: [live.item],
-			label: `tool: ${'tool' in live.item && typeof live.item.tool === 'string' ? live.item.tool : live.item.editor}`,
+			origin: { toolbar: live.toolbar, track: live.track, border: live.border },
+			mode: live.toolbar.length === 1 ? 'slide' : 'restructure',
 		})
 	}
 

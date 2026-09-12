@@ -2,9 +2,14 @@
  * Pointer drag-session helper for palette toolbar reordering.
  *
  * Ported from `@sursaut/ui` `directives/local-drag.ts` (`startLocalDragSession`),
- * trimmed to the palette's needs: pointer capture + window move/up listeners,
- * a 4px activation threshold handled by the caller, and blur/cancel cleanup.
- * No drag preview element (the toolbar itself moves via reactive layout state).
+ * trimmed to the palette's needs: window move/up listeners, blur/cancel
+ * cleanup, and no drag preview element (the toolbar itself moves via reactive
+ * layout state).
+ *
+ * There is deliberately no activation threshold: a drag is live from
+ * `pointerdown`, and a committed drop happens on hover, not on release. The
+ * caller decides what a commit means (see `commitDraggedToTrackSpace`), so a
+ * zero-pixel click is a legitimate no-op drag rather than a cancelled one.
  */
 
 export type PaletteDragPoint = { x: number; y: number }

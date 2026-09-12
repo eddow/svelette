@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { SvelteHTMLElements } from 'svelte/elements'
-	import { draggingEmptiesTrackIndex, paletteStackSpace } from '../layout.svelte'
+	import { draggingEmptiesTrackIndex } from '../layout.svelte'
 	import type { Palette as PaletteRuntime } from '../palette.svelte'
 	import { palettes } from '../palette.svelte'
 	import type { PaletteBorder, PaletteRegion, PaletteScope } from '../types'
@@ -13,6 +13,7 @@
 		palette: PaletteRuntime
 		scope: PaletteScope
 		inverse?: boolean
+		maskActive?: boolean
 		el?: SvelteHTMLElements['div']
 		track?: SvelteHTMLElements['div']
 		space?: SvelteHTMLElements['div']
@@ -26,6 +27,7 @@
 		palette,
 		scope,
 		inverse = false,
+		maskActive = false,
 		el,
 		track,
 		space,
@@ -33,10 +35,6 @@
 	}: Props = $props()
 
 	const ordered = $derived(inverse ? [...border].reverse() : border)
-
-	function stackTarget(index: number) {
-		return { border, direction, index, palette, region }
-	}
 
 	// Parallel DZs: the virtual tracks between real tracks (track0.5, track1.5…).
 	// They always exist as zero-size stack spaces. Hovering a track (including
@@ -88,6 +86,11 @@
 		const emptied = draggingEmptiesTrackIndex(border)
 		if (emptied !== undefined && (stackIndex === emptied || stackIndex === emptied + 1))
 			return false
+		// Modal-mask hover (driven by `Ide`): show the single most-inner DZ —
+		// the stack end closest to the center (`border.length` in every
+		// region: bottom-most of top, top-most of bottom, right-most of left,
+		// left-most of right — `inverse` borders render that stack first).
+		if (maskActive) return stackIndex === border.length
 		if (hoveredStack !== undefined) return stackIndex === hoveredStack
 		if (activeTrack === undefined) return false
 		return stackIndex === activeTrack || stackIndex === activeTrack + 1
@@ -130,7 +133,6 @@
 			]}
 			data-palette-id={palette.id}
 			data-stack-index={0}
-			use:paletteStackSpace={stackTarget(0)}
 		></div>
 	{/if}
 	{#each ordered as trackItem, position (trackItem)}
@@ -146,7 +148,6 @@
 				]}
 				data-palette-id={palette.id}
 				data-stack-index={trackIndex + 1}
-				use:paletteStackSpace={stackTarget(trackIndex + 1)}
 			></div>
 		{/if}
 		<ToolbarTrack
@@ -172,7 +173,6 @@
 				]}
 				data-palette-id={palette.id}
 				data-stack-index={trackIndex + 1}
-				use:paletteStackSpace={stackTarget(trackIndex + 1)}
 			></div>
 		{/if}
 	{/each}
@@ -187,7 +187,6 @@
 			]}
 			data-palette-id={palette.id}
 			data-stack-index={0}
-			use:paletteStackSpace={stackTarget(0)}
 		></div>
 	{/if}
 </div>

@@ -333,8 +333,8 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   nested drawer), right (tax slider, solar stepper, satisfaction stars),
   bottom (console, save, reset, hyper-tick, mission-clock status). `editorDefaults`
   covers all families (`run`/`boolean`/`enum`/`number`/`status`).
-- `src/routes/+page.svelte` renders `Ide` with `$state` borders + save/reset
-  layout buttons. The work-zone shows every colony variable as pills + a
+- `src/routes/+page.svelte` renders `Ide` with `$state` borders + a save/load
+  layout button group. The work-zone shows every colony variable as pills + a
   colony-status panel + an `mm:ss` elapsed-since-launch chip (the same
   `demoState.missionElapsed` the status tool reads); the open console
   dims + disables it (`.demo-center.is-dimmed`, quake-style modal).
@@ -380,16 +380,17 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
 - `Parking` renders at the top of the console, seeded from the live top border minus the
   command-box item (mirrors the reference `popupParkingToolbars`); parked toolbars can be
   removed/restored through the parking drop zones while editing.
-- Persistence: `+page.svelte` seeds `structuredClone(demoLayoutFor(activeMode).*)` `$state`
+- Persistence: `+page.svelte` seeds `structuredClone(demoLayoutFor('rw-combobox').*)` `$state`
   at init (server + client first render identical, no hydration mismatch; also avoids mutating
   the shared module objects) and splices a validated stored snapshot in `onMount`
   (`hydratePaletteLayout` can't run post-init — its `$state` is init-only — so each
   stored flat slot is re-nested as its own single-slot track, the same shape
   `hydratePaletteLayout` produces, and spliced into the deep proxies). The demo ships three
   **configurations** (`demoConfigs` in `src/lib/demo/palette.svelte.ts`): `rw-combobox`,
-  `rw-command-first`, `ro-combobox` — each with its own reset button; `demoLayoutFor(id)` flips
-  the reactive `demoEditable` flag (`get editable()` reads it). "Save layout" / per-mode "Reset"
-  round-trip through localStorage.
+  `rw-command-first`, `ro-combobox` — each loaded by a plain preset command button
+  (no toggle state); `demoLayoutFor(id)` flips
+  the reactive `demoEditable` flag (`get editable()` reads it). A "Save layout" /
+  "Load layout" button group round-trips through localStorage.
 - **Edit-mode inert:** `paletteItemShield` is a Svelte 5 action with an `update()` that sets
   `element.inert` on the item content wrapper — a run button/toggle/combobox becomes inert
   (unfocusable, unclickable) while `palette.editing`, leaving only the `paletteItemDrag` guard

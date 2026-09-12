@@ -12,7 +12,7 @@ export function setDemoEditable(value: boolean): void {
 	demoEditable = value
 }
 
-/** The distinct demo configurations, each loaded by its own reset button. */
+/** The distinct demo configurations, each loaded by its own preset command button. */
 export type DemoMode = 'rw-combobox' | 'rw-command-first' | 'ro-combobox'
 
 export type DemoConfig = {

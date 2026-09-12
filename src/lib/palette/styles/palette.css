@@ -100,10 +100,6 @@
 	width: auto;
 }
 
-.toolbar-track-space.toolbar-drop-zone.highlighted {
-	align-self: stretch;
-}
-
 .toolbar-border {
 	display: flex;
 	min-width: 0;

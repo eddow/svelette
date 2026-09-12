@@ -42,7 +42,6 @@ describe('item inspect (no movement yet)', () => {
 					border,
 					direction: 'horizontal',
 					item: firstItem,
-					itemIndex: 0,
 					palette,
 					region: 'top',
 					toolbar,

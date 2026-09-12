@@ -42,7 +42,7 @@ outside CI). `test.beforeEach` clears `localStorage` and reloads.
   open with axis inversion (left drawer → `is-horizontal`) + Escape close;
   inspector via `pointerdown` on `.toolbar-item-guard` (presentation-only
   configurator in the console, selected item highlighted); layout save → reload
-  → restored badge → reset; pointer drag reorder (`[commandBox,
+  → restored badge → preset load → load; pointer drag reorder (`[commandBox,
   emergencyProtocol, autoOxygen, shieldGenerator, alertLevel]` →
   `[commandBox, emergencyProtocol, shieldGenerator, alertLevel, autoOxygen]`).
 - `e2e/console.spec.ts` (8): backtick opens the edit-only console (Ide root

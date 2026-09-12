@@ -814,17 +814,76 @@ export interface Palette<TSchema extends PaletteSchema = PaletteSchema> {
 }
 
 /**
- * Simulated drag session state (movement restart, no real dragging yet).
+ * Origin of the dragged tools before they were picked up.
+ *
+ * Every drag source (single tool click, or whole-toolbar click) comes from a
+ * single toolbar, so one origin describes the whole selection. `track` and
+ * `border` are only needed to prune the origin when it empties; they're
+ * refreshed after each in-toolbar commit so subsequent DZ hovers always move
+ * from the current location.
+ */
+export interface PaletteDragOrigin {
+	/** The toolbar the dragged tools came from. */
+	toolbar: PaletteToolbar
+	/** The track that toolbar was in. */
+	track: PaletteTrack
+	/** The border that track was in. */
+	border: PaletteBorder
+}
+
+/**
+ * What the drag selection means right now, derived and cached.
+ *
+ * Ask *"is there anything else than my dragged tools left in my toolbar?"*
+ *
+ * - **no** → `'slide'`: the selection is the toolbar's entire content, so the
+ *   toolbar itself is what moves. Track gaps flanking it are "keep moving",
+ *   not a destination. This holds whether the grab was a whole toolbar or a
+ *   single tool that happens to be its only item.
+ * - **yes** → `'restructure'`: the tools are a subset, so the origin toolbar
+ *   stays behind and the selection is being restructured — a track-gap commit
+ *   extracts the tools into a fresh singleton toolbar.
+ *
+ * The mode is recomputed after every structural commit, never re-derived per
+ * pointer move. That is what makes the gap commit idempotent *and* what stops
+ * slide-follow the instant a merge turns the selection back into a subset.
+ * Without a recorded mode, a drag that started inside a multi-tool toolbar
+ * reads as "partial" forever and each new gap hover builds *another* toolbar
+ * holding the same tools.
+ */
+export type PaletteDragMode = 'restructure' | 'slide'
+
+/**
+ * Simulated drag session state.
  *
  * Centralised on `palettes.dragging`: a click on a tool selects that single
- * tool, a click on a toolbar selects its whole content. For now the selection
- * is only logged — no preview, no commit.
+ * tool, a click on a toolbar selects its whole content. Hovering a free DZ
+ * commits the move immediately (the dragged tools are transferred from their
+ * origin to the landing spot) so the DOM updates and re-highlighting follows.
  */
 export interface PaletteDragging<TPalette extends Palette = Palette> {
 	/** The palette instance. */
 	palette: TPalette
 	/** The selected tools (single tool click, or whole toolbar content). */
 	tools: PaletteToolbarItem[]
+	/** Where the dragged tools currently live. Updated after each commit. */
+	origin: PaletteDragOrigin
+	/**
+	 * What the selection means right now (see `PaletteDragMode`). Recomputed
+	 * after every structural commit: a subset selection is `'restructure'`,
+	 * the full content of a toolbar is `'slide'`.
+	 */
+	mode: PaletteDragMode
+	/**
+	 * Pixel grab offset of the cursor within the dragged toolbar, axis-agnostic.
+	 *
+	 * Captured once on mousedown (`toolbarGrabOffset`); preserved across
+	 * track/border moves so a relocated toolbar keeps the same delta even
+	 * when the axis changes (x becomes y). Absent for a restructure drag whose
+	 * toolbar does not exist yet: the first placement recenters it to half the
+	 * fresh toolbar's size (the caller measures the DOM element).
+	 */
+	grabOffset?: number
 }
 
 /**

@@ -1,18 +1,13 @@
 <script lang="ts">
 	import type { SvelteHTMLElements } from 'svelte/elements'
-	import {
-		paletteStackSpace,
-		removeEmptyTrack,
-		removePaletteItem,
-		removeToolbar,
-	} from '../layout.svelte'
+	import { removeEmptyTrack, removePaletteItem, removeToolbar } from '../layout.svelte'
 	import type { Palette as PaletteRuntime } from '../palette.svelte'
 	import type {
 		PaletteBorder,
 		PaletteScope,
 		PaletteToolbar,
 		PaletteToolbarItem,
-		PaletteTrack,
+		PaletteTrack
 	} from '../types'
 	import Toolbar from './Toolbar.svelte'
 
@@ -30,8 +25,7 @@
 		region?: 'top' | 'right' | 'bottom' | 'left'
 	}
 
-	let { toolbars, palette, scope, el, space, toolbar, border: liveBorder, region }: Props =
-		$props()
+	let { toolbars, palette, scope, el, space, toolbar, border: liveBorder, region }: Props = $props()
 
 	// G3 — parking binds the LIVE border when the caller passes one (the
 	// console passes the real top border): rows render live toolbars, the `×`
@@ -45,16 +39,6 @@
 	)
 	const border: PaletteBorder = $derived(liveBorder ?? localBorder)
 	const liveRegion = $derived(region ?? 'top')
-
-	function stackTarget(index: number) {
-		return {
-			border,
-			direction: 'horizontal' as const,
-			index,
-			palette,
-			region: liveRegion,
-		}
-	}
 
 	function removeParkedItem(
 		item: PaletteToolbarItem,
@@ -85,7 +69,6 @@
 		{...space}
 		class={['toolbar-stack-space toolbar-drop-zone', space?.class]}
 		data-palette-id={palette.id}
-		use:paletteStackSpace={stackTarget(0)}
 	></div>
 	{#each visibleTracks(border) as { track, position } (track)}
 		{@const toolbarItems = track[0]?.toolbar ?? []}
@@ -119,7 +102,6 @@
 			{...space}
 			class={['toolbar-stack-space toolbar-drop-zone', space?.class]}
 			data-palette-id={palette.id}
-			use:paletteStackSpace={stackTarget(position + 1)}
 		></div>
 	{/each}
 </div>

@@ -2,14 +2,13 @@
 	import type { Component } from 'svelte'
 	import type { SvelteHTMLElements } from 'svelte/elements'
 	import {
-		isDraggingWholeToolbar,
+		commitDraggedToItemSpace,
 		isItemSpaceFree,
 		nearestFreeItemSpaceAfter,
 		nearestFreeItemSpaceBefore,
 		paletteItemDrag,
 		paletteItemShield,
-		paletteToolbarDrag,
-		paletteToolbarSpace
+		paletteToolbarDrag
 	} from '../layout.svelte'
 	import { hasPaletteItemTool, type Palette as PaletteRuntime, palettes } from '../palette.svelte'
 	import type {
@@ -32,24 +31,11 @@
 		region?: PaletteRegion
 		track?: PaletteTrack
 		trackIndex?: number
-		slotIndex?: number
-		onTrackGap?: (side: 'before' | 'after' | undefined) => void
 		el?: SvelteHTMLElements['div']
 	}
 
-	let {
-		toolbar,
-		direction,
-		palette,
-		scope,
-		border,
-		region,
-		track,
-		trackIndex,
-		slotIndex,
-		onTrackGap,
-		el
-	}: Props = $props()
+	let { toolbar, direction, palette, scope, border, region, track, trackIndex, el }: Props =
+		$props()
 
 	// Editors read `palette` + `region` off the scope; stamp `region` here so
 	// left/right borders derive the vertical surface axis correctly.
@@ -80,10 +66,6 @@
 		} catch {
 			return { Editor: undefined, context: undefined }
 		}
-	}
-
-	function spaceTarget(index: number) {
-		return { direction, index, palette, toolbar }
 	}
 
 	function dragTarget() {
@@ -129,8 +111,12 @@
 	const isDragging = $derived(palettes.dragging?.palette === palette)
 	// The dragged toolbar keeps its handles exposed (padding) for the whole
 	// session: `:hover` drops on grab (pointer capture retargets), so without
-	// this the toolbar would collapse the moment the drag starts.
-	const isDraggedToolbar = $derived(editing && isDragging && isDraggingWholeToolbar(toolbar))
+	// this the toolbar would collapse the moment the drag starts. Identity on
+	// the session's origin — the same test for a whole-toolbar grab and for a
+	// tool set promoted into its own toolbar.
+	const isDraggedToolbar = $derived(
+		editing && isDragging && palettes.dragging?.origin.toolbar === toolbar
+	)
 
 	function isSpaceFree(index: number): boolean {
 		void draggingTools
@@ -152,8 +138,22 @@
 			event.currentTarget.contains(spaceEl)
 		) {
 			const index = Number(spaceEl.getAttribute('data-item-space-index'))
+			const prev = hoveredItemSpace
 			hoveredItemSpace = Number.isInteger(index) ? index : undefined
 			activeItem = undefined
+			// Commit on DZ hover: move dragged tools into this toolbar at this
+			// position. The origin is pruned if emptied. Svelte re-renders the
+			// DOM after this handler returns, so highlighting recomputes from
+			// the updated toolbar state.
+			if (
+				hoveredItemSpace !== undefined &&
+				hoveredItemSpace !== prev &&
+				isSpaceFree(hoveredItemSpace) &&
+				track &&
+				border
+			) {
+				commitDraggedToItemSpace(toolbar, track, border, hoveredItemSpace)
+			}
 			return
 		}
 		hoveredItemSpace = undefined
@@ -173,7 +173,6 @@
 	function onToolbarPointerLeave(): void {
 		hoveredItemSpace = undefined
 		activeItem = undefined
-		onTrackGap?.(undefined)
 	}
 
 	function isItemSpaceHighlighted(index: number): boolean {
@@ -188,51 +187,6 @@
 		const after = nearestFreeItemSpaceAfter(toolbar, activeItem + 1)
 		return index === before || index === after
 	}
-
-	// Gap-between-toolbars fallback: when the hovered tool has no free
-	// separator on one side (all candidates that way touch dragged tools),
-	// the parent track highlights its gap instead. Reported up through
-	// `onTrackGap` (scoped callback — no document query, no index-only
-	// matching, so no cross-track/stack leak).
-	function needsTrackGapBefore(): boolean {
-		if (
-			!palette.editing ||
-			!isDragging ||
-			activeItem === undefined ||
-			hoveredItemSpace !== undefined
-		)
-			return false
-		return nearestFreeItemSpaceBefore(toolbar, activeItem) === undefined
-	}
-
-	function needsTrackGapAfter(): boolean {
-		if (
-			!palette.editing ||
-			!isDragging ||
-			activeItem === undefined ||
-			hoveredItemSpace !== undefined
-		)
-			return false
-		return nearestFreeItemSpaceAfter(toolbar, activeItem + 1) === undefined
-	}
-
-	// Notify the parent track whenever the fallback side changes (or clears).
-	// Runs in an effect so it fires on hover/drag-selection changes, not only
-	// on pointer events.
-	$effect(() => {
-		if (
-			!palette.editing ||
-			!isDragging ||
-			activeItem === undefined ||
-			hoveredItemSpace !== undefined
-		) {
-			onTrackGap?.(undefined)
-			return
-		}
-		if (needsTrackGapBefore()) onTrackGap?.('before')
-		else if (needsTrackGapAfter()) onTrackGap?.('after')
-		else onTrackGap?.(undefined)
-	})
 
 	$effect(() => {
 		if (!palette.editing || !isDragging) {
@@ -259,7 +213,6 @@
 		]}
 		data-palette-id={palette.id}
 		data-item-space-index={0}
-		use:paletteToolbarSpace={spaceTarget(0)}
 	></div>
 	{#each toolbar as item, index (item)}
 		{@const resolved = resolveItem(item)}
@@ -284,7 +237,6 @@
 						border,
 						direction,
 						item,
-						itemIndex: index,
 						palette,
 						region,
 						toolbar,
@@ -301,7 +253,6 @@
 			]}
 			data-palette-id={palette.id}
 			data-item-space-index={index + 1}
-			use:paletteToolbarSpace={spaceTarget(index + 1)}
 		></div>
 	{/each}
 </div>
