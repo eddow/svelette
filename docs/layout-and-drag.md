@@ -47,16 +47,16 @@ remains of the total — never stored, always derived.
 - `PaletteItem` binds `resolveEditorContext` output to `<Editor context>`.
 - `Parking` owns the independent `parking` stack, always rendered (bordered
   empty strip with a hint when empty), with a delete button per row while
-  editing (`removeParkedToolbar`) plus stack gaps that behave like a border's
-  stack gaps: highlight while dragging (flanking gaps on row hover, single gap
-  on direct hover, `draggingEmptiesParkingRow` suppression), commit on hover
-  via `commitDraggedToParkingGap` (fresh row for subsets, relocate for whole
-  toolbars/rows, either origin container), and stay lit under console
-  panel-background hover via the `maskActive` prop.
+  editing (`removeParkedToolbar`) plus dwell-drop stack gaps mirroring a
+  border's stack gaps (flanking gaps on row hover, single gap on direct
+  hover, `draggingEmptiesParkingRow` suppression, `commitDraggedToParkingRow`
+  on `configuration.stackDzHoverMs`); drops also land via the toolbar
+  item-space DZs (`commitDraggedToParking`), never by hovering a gap alone;
+  gaps stay lit under console panel-background hover via the `maskActive`
+  prop.
 
 Helpers: `actualTrackSpaceAt`, `insertToolbar` (split a gap), `removeToolbar`
 (merge surrounding gaps), `removeParkedToolbar` (parking rows, no spacing),
-`commitDraggedToParkingGap` (parking stack-gap commits),
 `draggingEmptiesParkingRow` (parking analogue of `draggingEmptiesTrackIndex`),
 `insertTrackWithToolbar`, `removeEmptyTrack`,
 `moveToolbarToTrack` / `moveToolbarToStack`, `resizeToolbar`,

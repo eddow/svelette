@@ -1,6 +1,13 @@
 <script lang="ts">
+	import { tick } from 'svelte'
 	import type { SvelteHTMLElements } from 'svelte/elements'
-	import { draggingEmptiesTrackIndex } from '../layout.svelte'
+	import { configuration } from '$lib/configuration'
+	import {
+		commitDraggedToStackSpace,
+		draggingEmptiesTrackIndex,
+		lastDragPointer,
+		retargetToolbarSlide
+	} from '../layout.svelte'
 	import type { Palette as PaletteRuntime } from '../palette.svelte'
 	import { palettes } from '../palette.svelte'
 	import type { PaletteBorder, PaletteRegion, PaletteScope } from '../types'
@@ -44,12 +51,30 @@
 	let activeTrack = $state<number | undefined>(undefined)
 	let hoveredStack = $state<number | undefined>(undefined)
 
+	// Hover-dwell drop: a directly-hovered stack DZ arms a one-shot timer
+	// (`configuration.stackDzHoverMs`); on fire the dragged tools land in a
+	// new track at that stack (`commitDraggedToStackSpace`). Track-hover flanking
+	// highlights and the modal-mask inner DZ never arm — direct hover only.
+	// `committedStack` suppresses re-arming while the pointer stays put after
+	// a fire; leaving the DZ (or the drag ending) resets it so a fresh hover
+	// arms again.
+	let committedStack = $state<number | undefined>(undefined)
+	let hoverTimer: ReturnType<typeof setTimeout> | undefined
+
+	function clearStackTimer(): void {
+		if (hoverTimer !== undefined) {
+			clearTimeout(hoverTimer)
+			hoverTimer = undefined
+		}
+	}
+
 	const isDragging = $derived(palettes.dragging?.palette === palette)
 
 	function onBorderPointerMove(event: PointerEvent): void {
 		if (!palette.editing || !isDragging) {
 			activeTrack = undefined
 			hoveredStack = undefined
+			clearStackTimer()
 			return
 		}
 		const target = event.target
@@ -74,6 +99,7 @@
 	function onBorderPointerLeave(): void {
 		activeTrack = undefined
 		hoveredStack = undefined
+		clearStackTimer()
 	}
 
 	function isStackHighlighted(stackIndex: number): boolean {
@@ -105,6 +131,88 @@
 		if (!palette.editing || !isDragging) {
 			activeTrack = undefined
 			hoveredStack = undefined
+			clearStackTimer()
+			committedStack = undefined
+		}
+	})
+
+	// One-shot hover-dwell arming. Keyed on the direct-hover stack plus the
+	// drag/mask state: retargeting to another DZ restarts the timer (the
+	// cleanup clears the previous one), leaving the DZ or ending the drag
+	// cancels it. The fire re-checks the hover is still on the arming DZ
+	// before committing.
+	$effect(() => {
+		const stack = hoveredStack
+		const dragging = isDragging
+		const editing = palette.editing
+		const masked = maskActive
+		if (
+			!editing ||
+			!dragging ||
+			masked ||
+			stack === undefined ||
+			committedStack === stack ||
+			!isStackHighlighted(stack)
+		) {
+			clearStackTimer()
+			// Leaving the DZ resets the one-shot latch so a fresh hover
+			// arms again — including returning to the just-committed DZ.
+			if (stack === undefined) committedStack = undefined
+			return
+		}
+		// Retargeting to another DZ is a fresh hover: drop the latch for
+		// the previously committed stack so returning to it can arm again.
+		if (committedStack !== undefined) committedStack = undefined
+		clearStackTimer()
+		const targetBorder = border
+		const targetStack = stack
+		const targetDirection = direction
+		hoverTimer = setTimeout(() => {
+			void (async () => {
+				hoverTimer = undefined
+				committedStack = targetStack
+				// Backstop: a stack change normally cancels this via the
+				// cleanup first — only commit while the pointer is still on
+				// the arming DZ with a live drag.
+				if (hoveredStack !== targetStack) return
+				if (palettes.dragging?.palette !== palette) return
+				if (!palette.editing) return
+				const pointer = lastDragPointer()
+				const committed = commitDraggedToStackSpace(targetBorder, targetStack)
+				if (!committed) return
+				// The commit promotes a restructure into a slide over the fresh
+				// toolbar — arm slide-follow once the new track has flushed so
+				// the toolbar sticks under the cursor and moves along the track
+				// gaps. `recenter` grabs the fresh toolbar by its middle when
+				// the drag has no mousedown grab delta yet; a whole-toolbar
+				// slide keeps its grab delta (no recenter). The track's
+				// declarative `$effect` takes over from there.
+				await tick()
+				if (hoveredStack !== targetStack) return
+				if (palettes.dragging?.palette !== palette) return
+				const dragging = palettes.dragging
+				if (dragging?.origin.kind !== 'border') return
+				const placed = dragging.origin.track
+				const placedToolbar = dragging.origin.toolbar
+				const slot = placed.findIndex((entry) => entry.toolbar === placedToolbar)
+				if (slot < 0) return
+				const element = document.querySelector(
+					`[data-palette-id="${palette.id}"][data-region="${region}"] [data-track-index="${dragging.origin.border.indexOf(placed)}"] [data-toolbar-slot-index="${slot}"] .toolbar`
+				)
+				if (!(element instanceof HTMLElement)) return
+				retargetToolbarSlide({
+					track: placed,
+					toolbar: placedToolbar,
+					toolbarElement: element,
+					direction: targetDirection,
+					clientX: pointer.x,
+					clientY: pointer.y,
+					recenter: dragging.grabOffset === undefined
+				})
+			})()
+		}, configuration.stackDzHoverMs)
+		return () => {
+			clearStackTimer()
 		}
 	})
 </script>

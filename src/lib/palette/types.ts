@@ -924,8 +924,10 @@ export interface PaletteDragging<TPalette extends Palette = Palette> {
  *
  * Parking is NOT a view over a border — it owns its toolbars outright
  * (single ownership: a toolbar/item object lives in exactly one container).
- * Each entry is a full toolbar so parking rows reuse the same `Toolbar`
- * renderer and drag engine as borders, scoped by the `parking` origin kind.
+ * It is a plain `Stack<Toolbar>`: each entry is a full toolbar so parking
+ * rows reuse the same `Toolbar` renderer and drag engine as borders, scoped
+ * by the `parking` origin kind. Its stack gaps are highlight-only — drops
+ * land via the toolbar item-space DZs, never by hovering a gap.
  */
 export type PaletteParking<TItem extends PaletteToolbarItem = PaletteToolbarItem> =
 	PaletteToolbar<TItem>[]

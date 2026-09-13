@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { mount, unmount } from 'svelte'
 	import type { SvelteHTMLElements } from 'svelte/elements'
+	import { configuration } from '$lib/configuration'
 	import { getDrawerPortalContainer, paletteDrawerCollapse } from '../drawer-state.svelte'
 	import type {
 		PaletteDrawerToolbarItem,
@@ -100,7 +101,7 @@
 		hoverCloseTimer = setTimeout(() => {
 			hoverCloseTimer = undefined
 			open = false
-		}, 120)
+		}, configuration.drawerHoverCloseMs)
 	}
 
 	// Shared collapse signal: any bump of `paletteDrawerCollapse.version`

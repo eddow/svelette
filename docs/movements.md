@@ -66,16 +66,10 @@ which is why the mode is cached rather than derived on demand.
 - **Parking row** (`commitDraggedToParking`): ownership-transfer move into a
   parking toolbar — the tools leave the origin container (border toolbar
   pruned when emptied, parking row pruned when emptied) and the session
-  origin becomes `{ kind: 'parking', … }`.
-- **Parking gap** (`commitDraggedToParkingGap`): parking is a standard stack —
-  every gap is a destination and commits on hover, for either origin
-  container. `'restructure'` extracts the subset into a fresh singleton row;
-  `'slide'` relocates `origin.toolbar` itself as a row (identity preserved,
-  read back out of the stack like the track-gap proxy fix). While sliding a
-  parked row within its own stack, the two flanking gaps are a no-op
-  (keep-moving, not destinations); a restructure beside its own row is a
-  valid move. The gap index is adjusted for the shift caused by pruning the
-  origin row from the same stack.
+  origin becomes `{ kind: 'parking', … }`. Parking is a plain
+  `Stack<Toolbar>`: its stack gaps dwell-drop like border stack gaps (see
+  below), drops also land via the toolbar item-space DZs — never by
+  hovering a gap alone.
 - **Track gap** (`commitDraggedToTrackSpace`): one branch on the mode read
   *before* mutating, for either origin container (a parked row slides out of
   its stack into the track; a parked subset extracts into a fresh toolbar).
@@ -95,6 +89,39 @@ Both refresh `dragging.origin` so the next hover moves from the new location,
 and both adjust the gap index for the shift caused by pruning the origin from
 a shared track.
 
+### Stack gaps
+
+Gaps between tracks (stack DZs, `data-stack-index`) accept drops via a hover
+dwell — unlike track gaps, they never commit on hover alone. A *directly*
+hovered stack DZ (`hoveredStack` in `ToolbarBorder`) arms a one-shot
+`configuration.stackDzHoverMs` timer; on fire
+`commitDraggedToStackSpace(targetBorder, stackIndex)` creates a new
+single-toolbar track at that stack. Track-hover flanking highlights and the
+modal-mask inner DZ (`maskActive`) never arm — direct hover only.
+
+Cancel rules: the timer cancels on stack change (moving to another DZ
+restarts it), border leave, or drag end (mouse-up clears `palettes.dragging`,
+which the arming `$effect` observes). It fires exactly once per hover:
+leaving the DZ resets the latch, so holding the pointer still after a fire
+builds no second track.
+
+Mode branches mirror `commitDraggedToTrackSpace`: `'slide'` relocates
+`origin.toolbar` itself (identity preserved), `'restructure'` extracts the
+subset into a fresh singleton in the new track. Either origin container works
+(a parked row slides out of its stack; a parked subset extracts into the
+border), and cross-border moves are allowed — the commit takes the target
+border, so west-to-north lands in the north border. The emptied-track veto
+(`draggingEmptiesTrackIndex` against the *target* border) lives in the commit
+as well as the highlight, and the origin is pruned when emptied
+(`pruneDragOrigin` / `removeToolbar` + `removeEmptyTrack`). The stack index is
+adjusted for a same-border prune (`prunedTrack < stack → stack − 1`), and the
+placed track is read back out of the border (proxy hazard, same as track
+gaps). The commit promotes a restructure into a slide (`refreshDragMode`),
+and the border arms slide-follow over the fresh toolbar immediately
+(`retargetToolbarSlide` with `recenter` when the drag has no grab delta yet),
+so the new toolbar sticks under the cursor and moves along the track gaps —
+the track's declarative `$effect` takes over once the DOM flushes.
+
 ### Identity and reactive state
 
 An instantiated tool is `tool + editor + config + position`: the same
@@ -109,7 +136,10 @@ border vs `parking` stack + index) — so a parking row can never light up as
 the dragged toolbar of a border drag, even holding the same object.
 
 Parking is an independent stack (`PaletteParking`), never a view over a
-border. `Console` always renders `parking` (persisted via
+border — a plain `Stack<Toolbar>`: its stack gaps dwell-drop like a border's
+(`commitDraggedToParkingRow` on `configuration.stackDzHoverMs`, direct hover
+only, same cancel/once rules), and drops also land via the toolbar
+item-space DZs through `commitDraggedToParking`. `Console` always renders `parking` (persisted via
 `serialize`/`hydrate`) — empty parking stays visible as a bordered strip with
 a hint, so its single gap stays hittable. Rows commit through the parking
 path and prune via `removeParkedToolbar`.

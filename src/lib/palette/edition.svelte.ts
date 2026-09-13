@@ -11,6 +11,10 @@
  */
 
 export {
+	configuration,
+	type PaletteConfiguration,
+} from '$lib/configuration'
+export {
 	PALETTE_CATALOG_DRAG_MIME,
 	type PaletteAddItemCommandEntry,
 	type PaletteAddItemSource,
@@ -49,7 +53,8 @@ export {
 	clearToolbarSlide,
 	commitDraggedToItemSpace,
 	commitDraggedToParking,
-	commitDraggedToParkingGap,
+	commitDraggedToParkingRow,
+	commitDraggedToStackSpace,
 	commitDraggedToTrackSpace,
 	draggingEmptiesParkingRow,
 	draggingEmptiesTrackIndex,

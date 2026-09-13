@@ -373,7 +373,11 @@ describe('paletteRoot', () => {
 		render(ParkingProbe, { props: { palette, parking: reactiveParking() } })
 		expect(document.querySelector('[data-container="parking"]')).toBeTruthy()
 		expect(document.querySelector('[data-parking-gap-index="0"]')).toBeTruthy()
-		expect(document.querySelector('[data-testid="parking-empty-hint"]')).toBeTruthy()
+		// Empty stack = the single gap DZ is the stack's only child: no
+		// placeholder element, the dashed look comes from CSS `:only-child`.
+		expect(
+			document.querySelector('[data-container="parking"] > [data-parking-gap-index="0"]:only-child')
+		).toBeTruthy()
 	})
 
 	it('highlights the empty parking gap while dragging over it', async () => {
@@ -406,10 +410,9 @@ describe('paletteRoot', () => {
 			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
 			mode: 'restructure',
 		}
-		// Hovering the gap commits (a fresh row lands in parking), so assert
-		// the commit happened and the session followed it into parking — the
-		// fresh row itself is the visual feedback (previewing is moving),
-		// and the gap memo keeps the committed gap recorded.
+		// Parking gaps are highlight-only (plain `Stack<Toolbar>`): hovering
+		// lights the DZ, drops land via the toolbar item-space DZs. Nothing
+		// is created by hovering the gap.
 		gap!.dispatchEvent(
 			new PointerEvent('pointermove', {
 				bubbles: true,
@@ -420,8 +423,9 @@ describe('paletteRoot', () => {
 			})
 		)
 		await Promise.resolve()
-		expect(parking).toHaveLength(1)
-		expect(palettes.dragging?.origin.kind).toBe('parking')
+		expect(gap!.classList.contains('highlighted')).toBe(true)
+		expect(parking).toHaveLength(0)
+		expect(palettes.dragging?.origin.kind).toBe('border')
 		palettes.dragging = undefined
 	})
 

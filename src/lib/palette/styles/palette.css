@@ -349,19 +349,47 @@
 	flex: 1 1 auto;
 }
 
-/* Empty parking keeps a hint of presence: the stack never collapses, so its
- * single gap stays hittable and reads as a drop target while dragging. */
-.palette-parking-empty {
+/* Lone non-highlighted stack DZ (empty stack): the stack's single gap is its
+ * only child, so `:only-child` matches exactly the empty-stack case — no
+ * component, no JS. The dashed placeholder look applies only while the DZ is
+ * NOT highlighted: once (or twice) highlighted it behaves like any normal
+ * highlighted DZ. The `::after` label keeps the DZ itself as the hit target
+ * (no extra element to swallow pointer events). */
+.toolbar-border > .toolbar-stack-space.toolbar-drop-zone:only-child:not(.highlighted),
+.palette-parking > .toolbar-stack-space.toolbar-drop-zone:only-child:not(.highlighted) {
+	min-height: 0.75rem;
+	border: 1px dashed rgba(148, 163, 184, 0.5);
+	border-radius: 6px;
+	background: rgba(148, 163, 184, 0.06);
+}
+
+/* Vertical-tracked stacks (left/right borders) run their placeholder text
+ * along the stack axis. */
+.stack-horizontal > .toolbar-stack-space.toolbar-drop-zone:only-child:not(.highlighted) {
+	min-height: auto;
+	min-width: 0.75rem;
+}
+
+.stack-horizontal
+	> .toolbar-stack-space.toolbar-drop-zone:only-child:not(.highlighted)::after {
+	writing-mode: vertical-rl;
+	padding: 0.5rem 0.35rem;
+}
+
+.palette-ide.editing
+	.toolbar-border
+	> .toolbar-stack-space.toolbar-drop-zone:only-child:not(.highlighted)::after,
+.palette-ide.editing
+	.palette-parking
+	> .toolbar-stack-space.toolbar-drop-zone:only-child:not(.highlighted)::after {
+	content: 'Empty — drag tools here';
 	display: block;
 	padding: 0.35rem 0.5rem;
 	color: rgba(148, 163, 184, 0.85);
 	font-size: 0.82rem;
 	text-align: center;
 	user-select: none;
-}
-
-.palette-parking:has(.palette-parking-empty) > .toolbar-stack-space {
-	min-height: 0.75rem;
+	pointer-events: none;
 }
 
 .palette-parking-remove {

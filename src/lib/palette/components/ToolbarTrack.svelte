@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { SvelteHTMLElements } from 'svelte/elements'
+	import { configuration } from '$lib/configuration'
 	import {
 		actualTrackSpaceAt,
 		clearToolbarSlide,
@@ -162,7 +163,7 @@
 		data-palette-id={palette.id}
 		data-track-space-index={0}
 		style:flex-basis={`${actualTrackSpaceAt(track, 0) * 100}%`}
-		style:flex-grow={Math.max(actualTrackSpaceAt(track, 0), 0.0001)}
+		style:flex-grow={Math.max(actualTrackSpaceAt(track, 0), configuration.trackGapMinGrow)}
 	></div>
 	{#each track as slot, index (slot)}
 		<div class="toolbar-track-slot" data-toolbar-slot-index={index}>
@@ -184,7 +185,10 @@
 			data-palette-id={palette.id}
 			data-track-space-index={index + 1}
 			style:flex-basis={`${actualTrackSpaceAt(track, index + 1) * 100}%`}
-			style:flex-grow={Math.max(actualTrackSpaceAt(track, index + 1), 0.0001)}
+			style:flex-grow={Math.max(
+				actualTrackSpaceAt(track, index + 1),
+				configuration.trackGapMinGrow
+			)}
 		></div>
 	{/each}
 </div>

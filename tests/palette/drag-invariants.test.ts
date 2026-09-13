@@ -3,7 +3,8 @@ import {
 	actualTrackSpaceAt,
 	commitDraggedToItemSpace,
 	commitDraggedToParking,
-	commitDraggedToParkingGap,
+	commitDraggedToParkingRow,
+	commitDraggedToStackSpace,
 	commitDraggedToTrackSpace,
 	draggingEmptiesParkingRow,
 	draggingEmptiesTrackIndex,
@@ -537,7 +538,7 @@ describe('container-scoped drag identity (parking vs border)', () => {
 	})
 })
 
-describe('parking gap commits (standard stack)', () => {
+describe('parking row commits (dwell drop)', () => {
 	afterEach(() => {
 		document.body.replaceChildren()
 		palettes.editing = undefined
@@ -558,7 +559,7 @@ describe('parking gap commits (standard stack)', () => {
 			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
 			mode: 'restructure',
 		}
-		expect(commitDraggedToParkingGap(parking, 0)).toBe(true)
+		expect(commitDraggedToParkingRow(parking, 0)).toBe(true)
 		expect(parking).toHaveLength(1)
 		expect(parking[0]).toContain(dragged)
 		expect(originToolbar).toHaveLength(1)
@@ -584,7 +585,7 @@ describe('parking gap commits (standard stack)', () => {
 			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
 			mode: 'slide',
 		}
-		expect(commitDraggedToParkingGap(parking, 0)).toBe(true)
+		expect(commitDraggedToParkingRow(parking, 0)).toBe(true)
 		expect(parking).toHaveLength(1)
 		expect(parking[0]).toBe(originToolbar)
 		expect(border).toHaveLength(0)
@@ -602,28 +603,27 @@ describe('parking gap commits (standard stack)', () => {
 			origin: { kind: 'parking', toolbar: first, parking, index: 0 },
 			mode: 'slide',
 		}
-		expect(commitDraggedToParkingGap(parking, 2)).toBe(true)
+		expect(commitDraggedToParkingRow(parking, 2)).toBe(true)
 		expect(parking).toHaveLength(2)
 		expect(parking[0]).toBe(second)
 		expect(parking[1]).toBe(first)
 		expect(palettes.dragging?.origin).toMatchObject({ kind: 'parking', index: 1 })
 	})
 
-	it('treats the gaps flanking the moved row as keep-moving, not destinations', () => {
+	it('refuses the gaps touching the row the drag would empty', () => {
 		const palette = testPalette()
-		const first = reactiveToolbar(reactiveItem('first'))
-		const second = reactiveToolbar(reactiveItem('second'))
-		const parking = reactiveParking(first, second)
+		const row = reactiveToolbar(reactiveItem('solo'))
+		const parking = reactiveParking(row)
 		palettes.dragging = {
 			palette,
-			tools: [...first],
-			origin: { kind: 'parking', toolbar: first, parking, index: 0 },
+			tools: [...row],
+			origin: { kind: 'parking', toolbar: row, parking, index: 0 },
 			mode: 'slide',
 		}
-		expect(commitDraggedToParkingGap(parking, 0)).toBe(false)
-		expect(commitDraggedToParkingGap(parking, 1)).toBe(false)
-		expect(parking).toHaveLength(2)
-		expect(parking[0]).toBe(first)
+		expect(commitDraggedToParkingRow(parking, 0)).toBe(false)
+		expect(commitDraggedToParkingRow(parking, 1)).toBe(false)
+		expect(parking).toHaveLength(1)
+		expect(parking[0]).toBe(row)
 	})
 
 	it('extracts a parking subset into a fresh row', () => {
@@ -637,7 +637,7 @@ describe('parking gap commits (standard stack)', () => {
 			origin: { kind: 'parking', toolbar: originRow, parking, index: 0 },
 			mode: 'restructure',
 		}
-		expect(commitDraggedToParkingGap(parking, 1)).toBe(true)
+		expect(commitDraggedToParkingRow(parking, 1)).toBe(true)
 		expect(parking).toHaveLength(2)
 		expect(originRow).toHaveLength(1)
 		expect(parking[1]).toContain(dragged)
@@ -750,5 +750,171 @@ describe('parking → border commits (cross-container symmetry)', () => {
 		expect(hostTrack).toHaveLength(2)
 		expect(palettes.dragging?.origin).toMatchObject({ kind: 'border' })
 		expect(palettes.dragging?.mode).toBe('slide')
+	})
+})
+
+describe('stack-gap commits (hover-dwell drop)', () => {
+	afterEach(() => {
+		document.body.replaceChildren()
+		palettes.editing = undefined
+		palettes.inspecting = undefined
+		palettes.dragging = undefined
+	})
+
+	it('extracts a subset into a new track at the stack (origin pruned when emptied)', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originToolbar = reactiveToolbar(reactiveItem('keep'), dragged)
+		const originTrack = reactiveTrack(originToolbar)
+		const border = reactiveBorder(originTrack)
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
+			mode: 'restructure',
+		}
+		expect(commitDraggedToStackSpace(border, 1)).toBe(true)
+		expect(border).toHaveLength(2)
+		expect(border[1]).toHaveLength(1)
+		expect(border[1][0].toolbar).toContain(dragged)
+		// Origin kept its remaining tool; the session became a slide and
+		// follows the placed toolbar (proxy read-back, not the raw ref).
+		expect(originToolbar).toHaveLength(1)
+		expect(palettes.dragging?.mode).toBe('slide')
+		expect(palettes.dragging?.origin.toolbar).toBe(border[1][0].toolbar)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'border', border })
+		expect(
+			findOwnershipViolations({
+				borders: { top: border, right: [], bottom: [], left: [] },
+			})
+		).toEqual([])
+	})
+
+	it('removes the origin track when a lone tool leaves it', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originToolbar = reactiveToolbar(dragged)
+		const originTrack = reactiveTrack(originToolbar)
+		const other = reactiveToolbar(reactiveItem('other'))
+		const otherTrack = reactiveTrack(other)
+		const border = reactiveBorder(originTrack, otherTrack)
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
+			mode: 'restructure',
+		}
+		// Stack 2 is past the surviving track — the emptied origin track
+		// (index 0) vanishes, so the new track lands at index 1.
+		expect(commitDraggedToStackSpace(border, 2)).toBe(true)
+		expect(border).toHaveLength(2)
+		expect(border[1][0].toolbar).toContain(dragged)
+		expect(border[0]).toBe(otherTrack)
+	})
+
+	it('relocates a whole toolbar into a new track (identity preserved)', () => {
+		const palette = testPalette()
+		const moved = reactiveToolbar(reactiveItem('a'), reactiveItem('b'))
+		const originTrack = reactiveTrack(moved)
+		const border = reactiveBorder(originTrack, reactiveTrack(reactiveToolbar(reactiveItem('x'))))
+		palettes.dragging = {
+			palette,
+			tools: [...moved],
+			origin: { kind: 'border', toolbar: moved, track: originTrack, border },
+			mode: 'slide',
+		}
+		expect(commitDraggedToStackSpace(border, 2)).toBe(true)
+		expect(palettes.dragging?.origin.toolbar).toBe(moved)
+		expect(border).toHaveLength(2)
+		expect(border[1][0].toolbar).toBe(moved)
+		expect(palettes.dragging?.mode).toBe('slide')
+	})
+
+	it('moves a toolbar across borders (west to north)', () => {
+		const palette = testPalette()
+		const moved = reactiveToolbar(reactiveItem('a'))
+		const westTrack = reactiveTrack(moved)
+		const west = reactiveBorder(westTrack)
+		const northTrack = reactiveTrack(reactiveToolbar(reactiveItem('n')))
+		const north = reactiveBorder(northTrack)
+		palettes.dragging = {
+			palette,
+			tools: [...moved],
+			origin: { kind: 'border', toolbar: moved, track: westTrack, border: west },
+			mode: 'slide',
+		}
+		expect(commitDraggedToStackSpace(north, 1)).toBe(true)
+		expect(west).toHaveLength(0)
+		expect(north).toHaveLength(2)
+		expect(north[1][0].toolbar).toBe(moved)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'border', border: north })
+	})
+
+	it('refuses the stacks touching the track the drag would empty', () => {
+		const palette = testPalette()
+		const moved = reactiveToolbar(reactiveItem('solo'))
+		const originTrack = reactiveTrack(moved)
+		const border = reactiveBorder(originTrack, reactiveTrack(reactiveToolbar(reactiveItem('x'))))
+		palettes.dragging = {
+			palette,
+			tools: [...moved],
+			origin: { kind: 'border', toolbar: moved, track: originTrack, border },
+			mode: 'slide',
+		}
+		expect(commitDraggedToStackSpace(border, 0)).toBe(false)
+		expect(commitDraggedToStackSpace(border, 1)).toBe(false)
+		expect(border).toHaveLength(2)
+		expect(border[0]).toBe(originTrack)
+	})
+
+	it('slides a parked row into a new track (cross-container symmetry)', () => {
+		const palette = testPalette()
+		const row = reactiveToolbar(reactiveItem('a'), reactiveItem('b'))
+		const parking = reactiveParking(row)
+		const border = reactiveBorder(reactiveTrack(reactiveToolbar(reactiveItem('host'))))
+		palettes.dragging = {
+			palette,
+			tools: [...row],
+			origin: { kind: 'parking', toolbar: row, parking, index: 0 },
+			mode: 'slide',
+		}
+		expect(commitDraggedToStackSpace(border, 1)).toBe(true)
+		expect(parking).toHaveLength(0)
+		expect(border).toHaveLength(2)
+		expect(border[1][0].toolbar).toBe(row)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'border', border })
+		expect(
+			findOwnershipViolations({
+				borders: { top: border, right: [], bottom: [], left: [] },
+				parking,
+			})
+		).toEqual([])
+	})
+
+	it('extracts a parked subset into a new track (origin row kept when not emptied)', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originRow = reactiveToolbar(reactiveItem('keep'), dragged)
+		const parking = reactiveParking(originRow)
+		const border = reactiveBorder(reactiveTrack(reactiveToolbar(reactiveItem('host'))))
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'parking', toolbar: originRow, parking, index: 0 },
+			mode: 'restructure',
+		}
+		expect(commitDraggedToStackSpace(border, 0)).toBe(true)
+		expect(originRow).toHaveLength(1)
+		expect(parking).toHaveLength(1)
+		expect(border).toHaveLength(2)
+		expect(border[0][0].toolbar).toContain(dragged)
+		expect(palettes.dragging?.mode).toBe('slide')
+	})
+
+	it('rejects idle sessions', () => {
+		const border = reactiveBorder(reactiveTrack(reactiveToolbar(reactiveItem('b'))))
+		palettes.dragging = undefined
+		expect(commitDraggedToStackSpace(border, 1)).toBe(false)
+		expect(border).toHaveLength(1)
 	})
 })
