@@ -220,9 +220,10 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   them for the `<PaletteItem>` bind step).
 - Components (`components/`): `Ide.svelte` (four optional borders + center slot, `$derived`
   scope record published via `setPaletteScope`), `Toolbar.svelte` (toolbar + item spaces, edit-guard
-  overlay, click-to-inspect), `ToolbarTrack.svelte` (slots + spacing), `ToolbarBorder.svelte`
-  (region border, `inverse` reverses track order), `Parking.svelte` (owns its border seeded
-  once from `toolbars`, delete-button per row), `PaletteItem.svelte` (binds
+  overlay, click-to-inspect; border or parking location, never both), `ToolbarTrack.svelte`
+  (slots + spacing), `ToolbarBorder.svelte`
+  (region border, `inverse` reverses track order), `Parking.svelte` (owns the independent
+  `parking` stack, delete-button per row), `PaletteItem.svelte` (binds
   `resolveEditorContext` output to `<Editor context={...} />`).
 - Components take `palette` (runtime class) + `scope` as props instead of Sursaut's ambient
   scope/second-arg; `Toolbar` computes `dragTarget`/`spaceTarget` via functions (not `$derived`
@@ -377,15 +378,22 @@ Drawers render a popup perpendicular to their parent axis into `document.body` v
   (`PALETTE_CATALOG_DRAG_MIME` + `serializePaletteCatalogDragPayload` on `dataTransfer`,
   `beginPaletteCatalogInsertDrag` + `notifyPaletteCatalogNativeDragStarted` on `dragstart`);
   drops land in the existing `bindPaletteCatalogDrop` toolbar/track/stack zones.catalog
-- `Parking` renders at the top of the console, seeded from the live top border minus the
-  command-box item (mirrors the reference `popupParkingToolbars`); parked toolbars can be
-  removed/restored through the parking drop zones while editing.
+- `Parking` renders the independent `parking` stack at the top of the console minus the
+  command-box item (mirrors the reference `popupParkingToolbars`); parked toolbars are
+  removed via `removeParkedToolbar`, and border/parking exchange tools through
+  ownership-transfer commits (`commitDraggedToParking` + parking stack gaps).
+  Drag origins carry `kind: 'border' | 'parking'` so a top-bar drag can never
+  light up a parking row as dragged (position is part of instance identity;
+  `isDraggedToolbarAt` compares the container, not just the object).
 - Persistence: `+page.svelte` seeds `structuredClone(demoLayoutFor('rw-combobox').*)` `$state`
   at init (server + client first render identical, no hydration mismatch; also avoids mutating
-  the shared module objects) and splices a validated stored snapshot in `onMount`
+  the shared module objects) plus an empty `$state` parking stack, and splices a validated
+  stored snapshot in `onMount`
   (`hydratePaletteLayout` can't run post-init — its `$state` is init-only — so each
   stored flat slot is re-nested as its own single-slot track, the same shape
-  `hydratePaletteLayout` produces, and spliced into the deep proxies). The demo ships three
+  `hydratePaletteLayout` produces, and spliced into the deep proxies; parking rows
+  splice into their own stack). `serialize`/`hydrate` round-trip parking alongside
+  borders. The demo ships three
   **configurations** (`demoConfigs` in `src/lib/demo/palette.svelte.ts`): `rw-combobox`,
   `rw-command-first`, `ro-combobox` — each loaded by a plain preset command button
   (no toggle state); `demoLayoutFor(id)` flips

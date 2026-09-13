@@ -118,7 +118,7 @@ describe('track-gap drop zones', () => {
 		palettes.dragging = {
 			palette,
 			tools: [dragged],
-			origin: { toolbar: originToolbar, track: border[0], border },
+			origin: { kind: 'border', toolbar: originToolbar, track: border[0], border },
 			mode: 'restructure',
 		}
 
@@ -152,7 +152,7 @@ describe('track-gap drop zones', () => {
 		palettes.dragging = {
 			palette,
 			tools: [dragged],
-			origin: { toolbar: originToolbar, track: border[0], border },
+			origin: { kind: 'border', toolbar: originToolbar, track: border[0], border },
 			mode: 'restructure',
 		}
 
@@ -180,7 +180,7 @@ describe('track-gap drop zones', () => {
 		palettes.dragging = {
 			palette,
 			tools: [dragged],
-			origin: { toolbar: originToolbar, track: border[0], border },
+			origin: { kind: 'border', toolbar: originToolbar, track: border[0], border },
 			mode: 'restructure',
 		}
 
@@ -211,7 +211,7 @@ describe('track-gap drop zones', () => {
 		palettes.dragging = {
 			palette,
 			tools: [dragged],
-			origin: { toolbar: originToolbar, track: border[0], border },
+			origin: { kind: 'border', toolbar: originToolbar, track: border[0], border },
 			mode: 'slide',
 			grabOffset: 5,
 		}

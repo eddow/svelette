@@ -52,9 +52,14 @@
 	// *mode* (not a recomputed tool-list predicate) is what keeps this stable
 	// across commits: a restructure that extracts its tools into a fresh
 	// toolbar becomes a slide, and a merge back into a populated toolbar stops
-	// being one — which is what disarms slide-follow below.
+	// being one — which is what disarms slide-follow below. Container-scoped:
+	// a parking drag never arms slide-follow in a border track, even if the
+	// same toolbar object is rendered in both places.
 	const slidingToolbar = $derived(
-		palettes.dragging?.palette === palette && palettes.dragging.mode === 'slide'
+		palettes.dragging?.palette === palette &&
+			palettes.dragging.mode === 'slide' &&
+			palettes.dragging.origin.kind === 'border' &&
+			palettes.dragging.origin.track === track
 			? (palettes.dragging.origin.toolbar ?? undefined)
 			: undefined
 	)

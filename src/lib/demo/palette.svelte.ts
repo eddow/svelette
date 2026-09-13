@@ -1,7 +1,7 @@
 import { headEditors } from '$lib/head/registry'
 import { consoleTool } from '$lib/palette/console.svelte'
 import { Palette } from '$lib/palette/palette.svelte'
-import type { PaletteBorders } from '$lib/palette/types'
+import type { PaletteBorders, PaletteParking } from '$lib/palette/types'
 import { demoEditors } from './editors/registry'
 
 /** The demo's read/write flag, toggled per configuration (reactive). */
@@ -21,6 +21,10 @@ export type DemoConfig = {
 	description: string
 	editable: boolean
 	layout: PaletteBorders
+	/** Preset parking stack. Presets own their parking like their borders —
+	 * loading a preset restores both, so a stale parked row never survives
+	 * a preset switch. Empty unless a preset defines parked content. */
+	parking: PaletteParking
 }
 
 export type DemoState = {
@@ -531,6 +535,7 @@ export const demoConfigs: readonly DemoConfig[] = [
 			'Read-write; the toolbar hosts a command-box combobox (console opens in edit mode).',
 		editable: true,
 		layout: rwComboboxLayout,
+		parking: [],
 	},
 	{
 		id: 'rw-command-first',
@@ -539,6 +544,7 @@ export const demoConfigs: readonly DemoConfig[] = [
 			'Read-write; no combobox — the console opens command-first with a square edit-icon button.',
 		editable: true,
 		layout: commandFirstLayout,
+		parking: [],
 	},
 	{
 		id: 'ro-combobox',
@@ -546,14 +552,20 @@ export const demoConfigs: readonly DemoConfig[] = [
 		description: 'Read-only; the combobox runs commands inline, but the layout is not editable.',
 		editable: false,
 		layout: rwComboboxLayout,
+		parking: [],
 	},
 ]
 
-/** Default configuration (matches the legacy `initialIdeConfig`). */
-export function demoLayoutFor(id: DemoMode): PaletteBorders {
+/**
+ * Default configuration (matches the legacy `initialIdeConfig`).
+ *
+ * Returns the borders AND the preset parking: a preset load restores the
+ * whole configuration, never borders alone.
+ */
+export function demoLayoutFor(id: DemoMode): { borders: PaletteBorders; parking: PaletteParking } {
 	const config = demoConfigs.find((config) => config.id === id) ?? demoConfigs[0]
 	setDemoEditable(config.editable)
-	return config.layout
+	return { borders: config.layout, parking: config.parking }
 }
 
 /** Back-compat alias removed in favour of `demoLayoutFor('rw-combobox')`. */

@@ -816,20 +816,53 @@ export interface Palette<TSchema extends PaletteSchema = PaletteSchema> {
 /**
  * Origin of the dragged tools before they were picked up.
  *
- * Every drag source (single tool click, or whole-toolbar click) comes from a
- * single toolbar, so one origin describes the whole selection. `track` and
- * `border` are only needed to prune the origin when it empties; they're
- * refreshed after each in-toolbar commit so subsequent DZ hovers always move
- * from the current location.
+ * An instantiated tool is `tool + editor + config + position`: the same
+ * tool+config object must never live in two containers at once (single
+ * ownership). Every drag source therefore carries its container, so the
+ * "dragged tools are the ones in this toolbar?" question can never confuse
+ * two containers holding structurally identical items.
+ *
+ * - `border` — a toolbar living in an IDE border track.
+ * - `parking` — a toolbar living in the independent parking stack.
+ *
+ * `track`/`border` (or `parking`/`index`) are only needed to prune the origin
+ * when it empties; they're refreshed after each commit so subsequent DZ
+ * hovers always move from the current location.
  */
-export interface PaletteDragOrigin {
-	/** The toolbar the dragged tools came from. */
-	toolbar: PaletteToolbar
-	/** The track that toolbar was in. */
-	track: PaletteTrack
-	/** The border that track was in. */
-	border: PaletteBorder
-}
+export type PaletteDragOrigin =
+	| {
+			/** Border container discriminator. */
+			kind: 'border'
+			/** The toolbar the dragged tools came from. */
+			toolbar: PaletteToolbar
+			/** The track that toolbar was in. */
+			track: PaletteTrack
+			/** The border that track was in. */
+			border: PaletteBorder
+	  }
+	| {
+			/** Parking container discriminator. */
+			kind: 'parking'
+			/** The toolbar the dragged tools came from. */
+			toolbar: PaletteToolbar
+			/** The parking stack that toolbar lives in. */
+			parking: PaletteParking
+			/** Index of the toolbar within the parking stack. */
+			index: number
+	  }
+
+/** A toolbar living in a border track (with its track + border). */
+export type PaletteBorderLocation = Extract<PaletteDragOrigin, { kind: 'border' }>
+
+/** A toolbar living in the parking stack (with its stack index). */
+export type PaletteParkingLocation = Extract<PaletteDragOrigin, { kind: 'parking' }>
+
+/**
+ * Wherever a toolbar can live: a border track or the parking stack.
+ * Used by view predicates (`isDraggedToolbar`) so the same toolbar object
+ * rendered in two places can never match both.
+ */
+export type PaletteToolbarLocation = PaletteDragOrigin
 
 /**
  * What the drag selection means right now, derived and cached.
@@ -887,6 +920,26 @@ export interface PaletteDragging<TPalette extends Palette = Palette> {
 }
 
 /**
+ * Independent parking stack: toolbars parked outside the IDE borders.
+ *
+ * Parking is NOT a view over a border — it owns its toolbars outright
+ * (single ownership: a toolbar/item object lives in exactly one container).
+ * Each entry is a full toolbar so parking rows reuse the same `Toolbar`
+ * renderer and drag engine as borders, scoped by the `parking` origin kind.
+ */
+export type PaletteParking<TItem extends PaletteToolbarItem = PaletteToolbarItem> =
+	PaletteToolbar<TItem>[]
+
+/**
+ * Serialized parking row: one toolbar's items.
+ */
+export type SerializedParkingToolbar = readonly {
+	readonly tool?: string
+	readonly editor?: string
+	readonly config?: Record<string, unknown>
+}[]
+
+/**
  * Serialized palette layout for persistence.
  *
  * Unlike the runtime `PaletteBorders` (object identity + reactive arrays), this format uses plain
@@ -912,10 +965,6 @@ export type SerializedPaletteLayout = {
 			}[]
 		}[]
 	>
-	/** Optional parking area for items not currently displayed. */
-	readonly parking?: readonly (readonly {
-		readonly tool?: string
-		readonly editor?: string
-		readonly config?: Record<string, unknown>
-	}[])[]
+	/** Optional parking area: independent stack of toolbars, persisted. */
+	readonly parking?: readonly SerializedParkingToolbar[]
 }

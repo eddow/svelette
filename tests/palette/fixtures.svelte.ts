@@ -10,6 +10,7 @@
  */
 import type {
 	PaletteBorder,
+	PaletteParking,
 	PaletteToolbar,
 	PaletteToolbarItem,
 	PaletteTrack,
@@ -49,4 +50,10 @@ export function reactiveTrack(...toolbars: PaletteToolbar[]): PaletteTrack {
 export function reactiveBorder(...tracks: PaletteTrack[]): PaletteBorder {
 	const border = $state<PaletteBorder>(tracks)
 	return border
+}
+
+/** A `$state` parking stack holding the given toolbars. */
+export function reactiveParking(...toolbars: PaletteToolbar[]): PaletteParking {
+	const parking = $state<PaletteParking>(toolbars)
+	return parking
 }

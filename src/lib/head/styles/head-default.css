@@ -39,6 +39,16 @@
 	transform: translateY(-1px);
 }
 
+/* Inside a toolbar the lift would fight the toolbar's own hover padding
+ * (the whole row grows) and stretch `align-items: center` siblings, so
+ * buttons stay put there. The toolbar root is `.toolbar` (there is no
+ * `.palette-default-toolbar` wrapper in the markup). */
+.toolbar .palette-default-tool:hover:not(:disabled),
+.toolbar .palette-default-trigger:hover:not(:disabled),
+.toolbar .palette-default-menu-item:hover:not(:disabled) {
+	transform: none;
+}
+
 .palette-default-tool:disabled,
 .palette-default-trigger:disabled,
 .palette-default-menu-item:disabled {
@@ -354,13 +364,24 @@
 
 .palette-default-command-parking {
 	display: flex;
+	flex-direction: column;
 	min-inline-size: 0;
+	min-block-size: 2.5rem;
 	padding: 6px;
 	padding-inline-end: 2rem;
 	border: 1px solid rgba(71, 85, 105, 0.92);
 	border-radius: 14px;
 	background: rgba(15, 23, 42, 0.84);
 	box-sizing: border-box;
+}
+
+.palette-default-command-parking .palette-parking-empty {
+	color: rgba(148, 163, 184, 0.9);
+}
+
+/* Empty parking reads as a drop target: dashed border while it holds no rows. */
+.palette-default-command-parking:has(.palette-parking-empty) {
+	border-style: dashed;
 }
 
 .palette-default-command-toolbar {

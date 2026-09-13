@@ -29,11 +29,12 @@ import {
 	paletteCommandBoxModel,
 	paletteCommandEntries,
 } from './command-box.svelte'
-import { removePaletteItem } from './layout.svelte'
+import { removePaletteItem, removeParkedToolbar } from './layout.svelte'
 import type {
 	PaletteBorder,
 	PaletteEditorChoice,
 	PaletteEditorContext,
+	PaletteParking,
 	PaletteSchema,
 	PaletteStatusTool,
 	PaletteToolBool,
@@ -386,11 +387,16 @@ export function configuratorPresenter(
 		PaletteToolbarItem,
 		PaletteSchema
 	>,
-	location?: {
-		readonly toolbar: PaletteToolbar
-		readonly track: PaletteTrack
-		readonly border: PaletteBorder
-	}
+	location?:
+		| {
+				readonly toolbar: PaletteToolbar
+				readonly track: PaletteTrack
+				readonly border: PaletteBorder
+		  }
+		| {
+				readonly toolbar: PaletteToolbar
+				readonly parking: PaletteParking
+		  }
 ): ConfiguratorPresenter {
 	const item = context.item
 	const meta = headMeta(item)
@@ -432,6 +438,7 @@ export function configuratorPresenter(
 		removable: true,
 		remove() {
 			if (!location) return false
+			if ('parking' in location) return removeParkedToolbar(location.parking, location.toolbar) >= 0
 			return removePaletteItem(item, location.toolbar, location.track, location.border)
 		},
 	}

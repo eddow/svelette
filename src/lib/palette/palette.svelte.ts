@@ -44,6 +44,7 @@ import type {
 	PaletteItemBindingSection,
 	PaletteItemConfigurationDescriptor,
 	PaletteOf,
+	PaletteParking,
 	PaletteRegion,
 	PaletteSchema,
 	PaletteScope,
@@ -876,9 +877,11 @@ export function paletteTool<TSchema extends PaletteSchema>(
 /**
  * Global reactive palette UI state shared by layout components while editing and inspecting.
  *
- * Movement was stripped for a restart from scratch: no `dragging` or
- * catalogue-drag session lives here yet. The next movement design will add
- * its session state back on top of editing/inspecting.
+ * `inspecting` carries the live container of the selected item: border items
+ * carry `toolbar/track/border/trackIndex/region`, parking items carry only
+ * `toolbar` (no track/border) — so the configurator delete path and the
+ * `data-inspected` highlight can never confuse a parked item with a border
+ * item holding the same tool+config.
  */
 export const palettes = $state<{
 	dragging?: PaletteDragging
@@ -891,6 +894,8 @@ export const palettes = $state<{
 		track?: PaletteTrack
 		border?: PaletteBorder
 		trackIndex?: number
+		parking?: PaletteParking
+		parkingIndex?: number
 	}
 }>({})
 
@@ -988,6 +993,35 @@ export function resolveItemPlacementTarget(
 
 // ── Layout Serialization ──
 
+function serializeItem(item: PaletteToolbarItem): {
+	tool?: string
+	editor?: string
+	config?: Record<string, unknown>
+} {
+	const serialized: {
+		tool?: string
+		editor?: string
+		config?: Record<string, unknown>
+	} = {}
+	if ('tool' in item && item.tool !== undefined) serialized.tool = item.tool
+	if ('editor' in item && item.editor !== undefined) serialized.editor = item.editor
+	if ('config' in item && item.config !== undefined)
+		serialized.config = item.config as Record<string, unknown>
+	return serialized
+}
+
+function hydrateItem(item: {
+	readonly tool?: string
+	readonly editor?: string
+	readonly config?: Record<string, unknown>
+}): PaletteToolbarItem {
+	const result: Record<string, unknown> = {}
+	if (item.tool !== undefined) result.tool = item.tool
+	if (item.editor !== undefined) result.editor = item.editor
+	if (item.config !== undefined) result.config = item.config
+	return result as PaletteToolbarItem
+}
+
 /**
  * Serialize a palette border layout to a stable, JSON-serializable format.
  *
@@ -996,9 +1030,13 @@ export function resolveItemPlacementTarget(
  * booleans, plain objects).
  *
  * @param config - The palette border layout to serialize
+ * @param parking - The independent parking stack to serialize alongside
  * @returns A serialized layout suitable for JSON persistence
  */
-export function serializePaletteLayout(config: PaletteBorders): SerializedPaletteLayout {
+export function serializePaletteLayout(
+	config: PaletteBorders,
+	parking?: PaletteParking
+): SerializedPaletteLayout {
 	const regions: PaletteRegion[] = ['top', 'right', 'bottom', 'left']
 
 	const borders: Record<PaletteRegion, SerializedPaletteLayout['borders'][PaletteRegion]> =
@@ -1010,25 +1048,7 @@ export function serializePaletteLayout(config: PaletteBorders): SerializedPalett
 		borders[region] = config[region].flatMap((track) => {
 			return track.map((trackElement) => ({
 				space: trackElement.space,
-				toolbar: trackElement.toolbar.map((item) => {
-					const serialized: {
-						tool?: string
-						editor?: string
-						config?: Record<string, unknown>
-					} = {}
-
-					if ('tool' in item && item.tool !== undefined) {
-						serialized.tool = item.tool
-					}
-					if ('editor' in item && item.editor !== undefined) {
-						serialized.editor = item.editor
-					}
-					if ('config' in item && item.config !== undefined) {
-						serialized.config = item.config as Record<string, unknown>
-					}
-
-					return serialized
-				}),
+				toolbar: trackElement.toolbar.map(serializeItem),
 			}))
 		}) as SerializedPaletteLayout['borders'][PaletteRegion]
 	}
@@ -1036,6 +1056,7 @@ export function serializePaletteLayout(config: PaletteBorders): SerializedPalett
 	return {
 		version: 1,
 		borders,
+		parking: parking?.map((toolbar) => toolbar.map(serializeItem)),
 	}
 }
 
@@ -1169,13 +1190,17 @@ export function validatePaletteLayout(layout: unknown): layout is SerializedPale
 }
 
 /**
- * Hydrate a serialized palette layout into reactive PaletteBorders.
+ * Hydrate a serialized palette layout into reactive borders + parking.
  *
  * The plan calls for "`$state` for hydrate": the returned borders object is a
  * `$state` proxy, so layout components react to structural changes. `$state`
  * is only legal as a variable initializer, so the plain layout is built first
  * and wrapped at the end — nested arrays/objects become reactive through deep
  * `$state` proxying, exactly as if the consumer had written `$state(hydrated)`.
+ *
+ * Parking hydrates into its own `$state` stack — never into a border — so the
+ * single-ownership invariant holds from the first render: no toolbar/item
+ * object is ever shared between parking and a border.
  *
  * Init-time constraint: like all `$state` initializers, call this during
  * component/module initialization (or a function called from there), not from
@@ -1184,12 +1209,12 @@ export function validatePaletteLayout(layout: unknown): layout is SerializedPale
  *
  * @param palette - The palette instance for tool/editor validation
  * @param layout - The serialized layout to hydrate
- * @returns Reactive PaletteBorders ready for use in the palette
+ * @returns Reactive borders + parking ready for use in the palette
  */
 export function hydratePaletteLayout(
 	_palette: Palette,
 	layout: SerializedPaletteLayout
-): PaletteBorders {
+): { borders: PaletteBorders; parking: PaletteParking } {
 	const regions: PaletteRegion[] = ['top', 'right', 'bottom', 'left']
 
 	const plain: Record<PaletteRegion, PaletteBorder> = {} as Record<PaletteRegion, PaletteBorder>
@@ -1201,26 +1226,29 @@ export function hydratePaletteLayout(
 		plain[region] = serializedBorder.map((track) => [
 			{
 				space: track.space,
-				toolbar: track.toolbar.map((item) => {
-					// Create the item with all properties at once to avoid readonly assignment issues
-					const result: Record<string, unknown> = {}
-
-					if (item.tool !== undefined) {
-						result.tool = item.tool
-					}
-					if (item.editor !== undefined) {
-						result.editor = item.editor
-					}
-					if (item.config !== undefined) {
-						result.config = item.config
-					}
-
-					return result as PaletteToolbarItem
-				}),
+				toolbar: track.toolbar.map(hydrateItem),
 			},
 		])
 	}
 
+	const plainParking: PaletteParking = (layout.parking ?? []).map((toolbar) =>
+		toolbar.map(hydrateItem)
+	)
+
 	const borders: PaletteBorders = $state(plain)
-	return borders
+	const parking: PaletteParking = $state(plainParking)
+	return { borders, parking }
+}
+
+/**
+ * Back-compat: hydrate borders only (drops serialized parking).
+ *
+ * Prefer `hydratePaletteLayout` (which returns `{ borders, parking }`).
+ * Kept so existing callers/tests keep compiling during the parking migration.
+ */
+export function hydratePaletteBorders(
+	palette: Palette,
+	layout: SerializedPaletteLayout
+): PaletteBorders {
+	return hydratePaletteLayout(palette, layout).borders
 }

@@ -15,9 +15,13 @@ import { isEditableTool, isRunTool, PaletteError, palettes } from './palette.sve
 import type {
 	Palette,
 	PaletteBorder,
+	PaletteBorderLocation,
+	PaletteBorders,
 	PaletteDragging,
 	PaletteDragMode,
 	PaletteDragOrigin,
+	PaletteParking,
+	PaletteParkingLocation,
 	PaletteRegion,
 	PaletteToolbar,
 	PaletteToolbarItem,
@@ -28,6 +32,7 @@ import type {
 export type PaletteOrientation = 'horizontal' | 'vertical'
 
 export type PaletteItemDragTarget = {
+	kind: 'border'
 	border: PaletteBorder
 	direction: PaletteOrientation
 	item: PaletteToolbarItem
@@ -38,7 +43,18 @@ export type PaletteItemDragTarget = {
 	trackIndex: number
 }
 
+export type PaletteParkingItemDragTarget = {
+	kind: 'parking'
+	direction: PaletteOrientation
+	item: PaletteToolbarItem
+	palette: Palette
+	toolbar: PaletteToolbar
+	parking: PaletteParking
+	index: number
+}
+
 export type PaletteToolbarDrag = {
+	kind: 'border'
 	border: PaletteBorder
 	direction: PaletteOrientation
 	palette: Palette
@@ -46,6 +62,15 @@ export type PaletteToolbarDrag = {
 	toolbar: PaletteToolbar
 	track: PaletteTrack
 	trackIndex: number
+}
+
+export type PaletteParkingToolbarDrag = {
+	kind: 'parking'
+	direction: PaletteOrientation
+	palette: Palette
+	toolbar: PaletteToolbar
+	parking: PaletteParking
+	index: number
 }
 
 export function clampUnit(value: number): number {
@@ -114,6 +139,110 @@ export function removeEmptyTrack(border: PaletteBorder, track: PaletteTrack): vo
 }
 
 /**
+ * Removes a toolbar from the parking stack by identity.
+ *
+ * Parking rows have no spacing to merge — the stack is a plain list.
+ *
+ * @returns The removed index, or `-1` when the toolbar is not parked.
+ */
+export function removeParkedToolbar(parking: PaletteParking, toolbar: PaletteToolbar): number {
+	const index = parking.indexOf(toolbar)
+	if (index < 0) return -1
+	parking.splice(index, 1)
+	return index
+}
+
+/**
+ * Canonical tool id for a toolbar item: strips setter (`=`/`|`) and action
+ * (`:`) suffixes so `alertLevel`, `alertLevel=red`, and `alertLevel|red`
+ * fingerprint as the same tool. Editor-only items fingerprint on `editor`.
+ */
+export function canonicalItemTool(item: PaletteToolbarItem): string {
+	const spec = (item as { tool?: unknown }).tool
+	if (typeof spec !== 'string') return ''
+	const setter = spec.search(/[=|]/)
+	const colon = spec.indexOf(':')
+	const cut =
+		setter >= 0 && (colon < 0 || setter < colon) ? setter : colon >= 0 ? colon : spec.length
+	return spec.slice(0, cut)
+}
+
+/**
+ * Stable structural fingerprint of an instantiated tool: canonical tool (or
+ * editor-only editor) + editor variant + stable-stringified config.
+ * Position is NOT part of the fingerprint — it is the container that makes
+ * two identical fingerprints two distinct instances.
+ */
+export function itemFingerprint(item: PaletteToolbarItem): string {
+	const tool = canonicalItemTool(item)
+	const editor = (item as { editor?: unknown }).editor
+	const config = (item as { config?: unknown }).config
+	return JSON.stringify([tool, typeof editor === 'string' ? editor : null, stableStringify(config)])
+}
+
+function stableStringify(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(stableStringify)
+	if (value !== null && typeof value === 'object') {
+		const record = value as Record<string, unknown>
+		const sorted: Record<string, unknown> = {}
+		for (const key of Object.keys(record).sort()) sorted[key] = stableStringify(record[key])
+		return sorted
+	}
+	return value ?? null
+}
+
+/**
+ * Single-ownership invariant: every toolbar/item object lives in exactly one
+ * container. Scans borders + parking for shared `===` references (the same
+ * object rendered twice, e.g. parking mirroring a live border) and for
+ * structural duplicates (same fingerprint in two places).
+ *
+ * @returns Human-readable violations (empty = invariant holds).
+ */
+export function findOwnershipViolations(options: {
+	borders: PaletteBorders
+	parking?: PaletteParking
+}): string[] {
+	const { borders, parking } = options
+	const violations: string[] = []
+	const toolbarOwners = new Map<PaletteToolbar, string>()
+	const itemOwners = new Map<PaletteToolbarItem, string>()
+	const fingerprints = new Map<string, string>()
+	function claimToolbar(toolbar: PaletteToolbar, where: string): void {
+		const owner = toolbarOwners.get(toolbar)
+		if (owner !== undefined) violations.push(`toolbar shared by ${owner} and ${where}`)
+		else toolbarOwners.set(toolbar, where)
+	}
+	function claimItem(item: PaletteToolbarItem, where: string): void {
+		const owner = itemOwners.get(item)
+		if (owner !== undefined) violations.push(`item shared by ${owner} and ${where}`)
+		else itemOwners.set(item, where)
+		const fingerprint = itemFingerprint(item)
+		const first = fingerprints.get(fingerprint)
+		if (first !== undefined)
+			violations.push(`duplicate item ${fingerprint} in ${first} and ${where}`)
+		else fingerprints.set(fingerprint, where)
+	}
+	const regions: PaletteRegion[] = ['top', 'right', 'bottom', 'left']
+	for (const region of regions) {
+		const border = borders[region] ?? []
+		border.forEach((track, trackIndex) => {
+			track.forEach((slot, slotIndex) => {
+				const where = `${region}[${trackIndex}][${slotIndex}]`
+				claimToolbar(slot.toolbar, where)
+				slot.toolbar.forEach((item, itemIndex) => claimItem(item, `${where}#${itemIndex}`))
+			})
+		})
+	}
+	parking?.forEach((toolbar, index) => {
+		const where = `parking[${index}]`
+		claimToolbar(toolbar, where)
+		toolbar.forEach((item, itemIndex) => claimItem(item, `${where}#${itemIndex}`))
+	})
+	return violations
+}
+
+/**
  * Headless item removal (G2, D2 item-level / D3 lives in layout).
  *
  * Removes `item` from `toolbar` by identity, then prunes the emptied toolbar
@@ -142,10 +271,11 @@ export function removePaletteItem(
 /**
  * Commit the dragged tools into a target toolbar at a specific item-space index.
  *
- * Removes every dragged tool from the origin toolbar (pruning the origin
- * toolbar/track when emptied), splices them into the target toolbar at
- * `itemSpaceIndex`, then refreshes `palettes.dragging.origin` so subsequent
- * DZ hovers always move from the current location.
+ * Works for either origin container (border or parking): the tools leave the
+ * origin via `pruneDragOrigin` (border toolbar/track pruned when emptied,
+ * parking row pruned when emptied) and land in the target border toolbar.
+ * The session origin follows them, so a parking drag becomes a border drag
+ * after landing.
  *
  * When the origin and target are the same toolbar, the removal happens first
  * (so indices shift), then the insertion uses the adjusted index.
@@ -164,19 +294,8 @@ export function commitDraggedToItemSpace(
 	const { tools, origin } = dragging
 	if (tools.length === 0) return false
 
-	// Remove every dragged tool from the origin toolbar.
-	const originToolbar = origin.toolbar
-	const originTrack = origin.track
-	const originBorder = origin.border
-	for (const tool of tools) {
-		const idx = originToolbar.indexOf(tool)
-		if (idx >= 0) originToolbar.splice(idx, 1)
-	}
-	// Prune origin if emptied.
-	if (originToolbar.length === 0) {
-		removeToolbar(originTrack, originToolbar)
-		removeEmptyTrack(originBorder, originTrack)
-	}
+	// Remove every dragged tool from the origin toolbar (either container).
+	pruneDragOrigin(origin, tools)
 
 	// Compute the insertion index. When origin and target are the same
 	// toolbar, the removal above already shifted indices — the item-space
@@ -190,6 +309,7 @@ export function commitDraggedToItemSpace(
 
 	// Refresh the origin so subsequent DZ hovers move from the new location.
 	dragging.origin = {
+		kind: 'border',
 		toolbar: targetToolbar,
 		track: targetTrack,
 		border: targetBorder,
@@ -208,22 +328,24 @@ export function commitDraggedToItemSpace(
  * Commit the dragged tools into a track gap, entering (or continuing)
  * toolbar sliding.
  *
- * The behaviour is decided by the session's *derived* mode, never by
- * re-deriving the selection kind from the tool lists per hover:
+ * Works for either origin container (border or parking): the behaviour is
+ * decided by the session's *derived* mode, never by re-deriving the
+ * selection kind from the tool lists per hover:
  *
  * - `'restructure'`: the dragged tools are a subset, so they are extracted
  *   from `origin.toolbar` into a fresh singleton toolbar placed at the gap
- *   (splitting it 50/50) and the origin is pruned when emptied.
+ *   (splitting it 50/50) and the origin is pruned when emptied (via
+ *   `pruneDragOrigin`, so a parking row prunes like a border toolbar).
  * - `'slide'`: `origin.toolbar` itself is relocated at the gap. Identity is
  *   preserved — the same toolbar object moves, it is never cloned and its
  *   tools are never re-extracted. This is what makes a repeated commit at the
- *   same gap a no-op.
+ *   same gap a no-op. A parked row slides out of its stack into the track.
  *
- * `dragging.origin` is refreshed in both cases so the next hover moves from
- * the new location, `trackSpaceIndex` is adjusted for the index shift caused
- * by pruning the origin from a shared track, and the mode is recomputed once
- * the placement lands (a restructure becomes a slide: its tools now sit alone
- * in their own toolbar).
+ * `dragging.origin` is refreshed to `{ kind: 'border', … }` in both cases so
+ * the next hover moves from the new location, `trackSpaceIndex` is adjusted
+ * for the index shift caused by pruning the origin from a shared track, and
+ * the mode is recomputed once the placement lands (a restructure becomes a
+ * slide: its tools now sit alone in their own toolbar).
  *
  * @returns `true` when a toolbar was (re)placed at the gap.
  */
@@ -238,8 +360,8 @@ export function commitDraggedToTrackSpace(
 	if (tools.length === 0) return false
 
 	const originToolbar = origin.toolbar
-	const originTrack = origin.track
-	const originBorder = origin.border
+	// Only a border origin can share the target track (parking has no tracks).
+	const originTrack = origin.kind === 'border' ? origin.track : undefined
 
 	// Read the mode *before* mutating: it describes the current selection.
 	// `'slide'` = the toolbar itself is what is being moved; `'restructure'` =
@@ -254,9 +376,14 @@ export function commitDraggedToTrackSpace(
 	// A restructure is different: extracting a tool out of a toolbar and
 	// dropping it into the gap right beside that toolbar is a perfectly good
 	// move, and must create the singleton there.
-	const originSlot = originTrack.findIndex((entry) => entry.toolbar === originToolbar)
-	if (mode === 'slide' && targetTrack === originTrack && originSlot >= 0) {
-		if (trackSpaceIndex === originSlot || trackSpaceIndex === originSlot + 1) return false
+	//
+	// A parking origin never shares the target track, so this guard only
+	// applies to border origins.
+	if (mode === 'slide' && originTrack !== undefined && targetTrack === originTrack) {
+		const originSlot = originTrack.findIndex((entry) => entry.toolbar === originToolbar)
+		if (originSlot >= 0) {
+			if (trackSpaceIndex === originSlot || trackSpaceIndex === originSlot + 1) return false
+		}
 	}
 
 	let destination: PaletteToolbar
@@ -266,29 +393,34 @@ export function commitDraggedToTrackSpace(
 	if (mode === 'slide') {
 		// Slide: relocate the toolbar object itself at the gap — identity
 		// preserved, never cloned, so a commit at the same gap is idempotent.
-		prunedSlot = removeToolbar(originTrack, originToolbar)
-		removeEmptyTrack(originBorder, originTrack)
+		// A parked row slides out of its stack; a border toolbar out of its track.
+		if (origin.kind === 'border') {
+			prunedSlot = removeToolbar(origin.track, originToolbar)
+			removeEmptyTrack(origin.border, origin.track)
+		} else {
+			removeParkedToolbar(origin.parking, originToolbar)
+		}
 		destination = originToolbar
 	} else {
 		// Restructure: extract the dragged tools out of the origin toolbar. The
 		// tools are moved by identity into a fresh singleton; the origin keeps
-		// whatever is left and is pruned (with its track) only when it empties.
-		for (const tool of tools) {
-			const index = originToolbar.indexOf(tool)
-			if (index >= 0) originToolbar.splice(index, 1)
-		}
-		if (originToolbar.length === 0) {
-			prunedSlot = removeToolbar(originTrack, originToolbar)
-			removeEmptyTrack(originBorder, originTrack)
-		}
+		// whatever is left and is pruned (with its track, for borders) only
+		// when it empties.
+		pruneDragOrigin(origin, tools)
 		destination = []
 	}
 
 	// The gap index was read before the prune; when the removed origin sat
 	// before the gap in a shared track, indices shifted down by one. Adjust
-	// before clamping so the toolbar lands where the pointer is.
+	// before clamping so the toolbar lands where the pointer is. A parking
+	// origin never shares the track, so `prunedSlot` stays `-1` there.
 	let insertionIndex = trackSpaceIndex
-	if (targetTrack === originTrack && prunedSlot >= 0 && prunedSlot < trackSpaceIndex) {
+	if (
+		originTrack !== undefined &&
+		targetTrack === originTrack &&
+		prunedSlot >= 0 &&
+		prunedSlot < trackSpaceIndex
+	) {
 		insertionIndex -= 1
 	}
 	insertionIndex = Math.min(Math.max(insertionIndex, 0), targetTrack.length)
@@ -304,6 +436,7 @@ export function commitDraggedToTrackSpace(
 
 	// Refresh the origin so subsequent DZ hovers move from the new location.
 	dragging.origin = {
+		kind: 'border',
 		toolbar: placed,
 		track: targetTrack,
 		border: targetBorder,
@@ -315,6 +448,164 @@ export function commitDraggedToTrackSpace(
 	refreshDragMode(dragging)
 
 	return true
+}
+
+/**
+ * Commit the dragged tools into a parking row at a specific item-space index.
+ *
+ * Ownership-transfer move: the tools leave the origin container (border
+ * toolbar pruned when emptied, parking row pruned when emptied) and land in
+ * the target parking toolbar. The session origin follows them, so a parking
+ * drag stays a parking drag and a border drag becomes one after landing.
+ *
+ * @returns `true` when the commit succeeded.
+ */
+export function commitDraggedToParking(
+	targetToolbar: PaletteToolbar,
+	targetParking: PaletteParking,
+	targetIndex: number,
+	itemSpaceIndex: number
+): boolean {
+	const dragging = palettes.dragging
+	if (!dragging) return false
+	const { tools, origin } = dragging
+	if (tools.length === 0) return false
+
+	pruneDragOrigin(origin, tools)
+
+	const clampedIndex = Math.min(Math.max(itemSpaceIndex, 0), targetToolbar.length)
+	targetToolbar.splice(clampedIndex, 0, ...tools)
+
+	const placed = targetParking[targetIndex] ?? targetToolbar
+	dragging.origin = {
+		kind: 'parking',
+		toolbar: placed,
+		parking: targetParking,
+		index: Math.min(Math.max(targetIndex, 0), Math.max(targetParking.length - 1, 0)),
+	}
+	if (refreshDragMode(dragging) !== 'slide') clearToolbarSlide()
+	return true
+}
+
+/**
+ * Commit the dragged tools into a parking stack gap, creating or relocating
+ * a row. Parking is a standard stack: every gap is a destination, like a
+ * border's stack gaps — except these commit on hover.
+ *
+ * Behaviour is decided by the session's *derived* mode (read before
+ * mutating), for either origin container:
+ *
+ * - `'restructure'`: the dragged tools are a subset, so they are extracted
+ *   from `origin.toolbar` into a fresh singleton row at the gap. The origin
+ *   keeps whatever is left and is pruned (with its track, for borders) only
+ *   when it empties — via `pruneDragOrigin`, so "removed from origin only
+ *   when added elsewhere" holds for cross-container moves.
+ * - `'slide'`: `origin.toolbar` itself is relocated at the gap. Identity is
+ *   preserved — the same toolbar object moves, never cloned, tools never
+ *   re-extracted.
+ *
+ * While sliding a parked row within its own stack, the two gaps flanking it
+ * are not destinations — just that row's own spacing — so hovering them is
+ * "keep moving", not "drop here" (mirror of the flanking guard in
+ * `commitDraggedToTrackSpace`). A restructure is different: extracting a
+ * subset into the gap right beside its own row is a perfectly good move.
+ *
+ * The gap index was read before the prune; when the removed origin row sat
+ * before the gap in the same stack, indices shifted down by one — adjust
+ * before clamping so the row lands where the pointer is. `dragging.origin`
+ * is refreshed to `{ kind: 'parking', … }` and the mode recomputed (a
+ * restructure becomes a slide: its tools now sit alone in their own row).
+ *
+ * @returns `true` when a row was (re)placed at the gap.
+ */
+export function commitDraggedToParkingGap(
+	targetParking: PaletteParking,
+	gapIndex: number
+): boolean {
+	const dragging = palettes.dragging
+	if (!dragging) return false
+	const { tools, origin } = dragging
+	if (tools.length === 0) return false
+
+	// Read the mode *before* mutating: it describes the current selection.
+	const mode = resolveDragMode(dragging)
+
+	const sameStack = origin.kind === 'parking' && origin.parking === targetParking
+	if (mode === 'slide' && sameStack) {
+		const originRow = targetParking.indexOf(origin.toolbar)
+		if (originRow >= 0 && (gapIndex === originRow || gapIndex === originRow + 1)) return false
+	}
+
+	// Row the origin vacates in the target stack, or `-1` when it stays (or
+	// lives in another container). Only a real removal before the gap shifts
+	// the gap indices.
+	const originRowBefore = sameStack ? targetParking.indexOf(origin.toolbar) : -1
+
+	let destination: PaletteToolbar
+	if (mode === 'slide') {
+		// Relocate the toolbar object itself — identity preserved, never
+		// cloned. A border slide keeps its tools (remove the toolbar from its
+		// track, not the tools from the toolbar); a parking slide splices the
+		// row out of its own stack.
+		if (origin.kind === 'border') {
+			removeToolbar(origin.track, origin.toolbar)
+			removeEmptyTrack(origin.border, origin.track)
+		} else {
+			removeParkedToolbar(origin.parking, origin.toolbar)
+		}
+		destination = origin.toolbar
+	} else {
+		// Extract the subset; the origin is pruned only when it empties.
+		pruneDragOrigin(origin, tools)
+		destination = []
+	}
+
+	let at = gapIndex
+	const prunedBefore =
+		originRowBefore >= 0 && targetParking.indexOf(origin.toolbar) < 0 ? originRowBefore : -1
+	if (prunedBefore >= 0 && prunedBefore < gapIndex) at -= 1
+	at = Math.min(Math.max(at, 0), targetParking.length)
+	// Push the tools into the fresh row *before* inserting it: the stack is
+	// reactive (`$state`), so the array stored in it is a *proxy* of
+	// `destination` — pushing after the splice would mutate the proxy through
+	// the raw reference, which breaks identity lookups.
+	if (mode === 'restructure') destination.push(...tools)
+	targetParking.splice(at, 0, destination)
+
+	// Read the row back out of the stack rather than reusing the local
+	// reference. The stack is reactive (`$state`), so the array stored in it
+	// is a *proxy* of `destination`; keeping the raw reference would make
+	// every later identity lookup (`findIndex`, `includes`) miss.
+	const placed = targetParking[at] ?? destination
+	dragging.origin = {
+		kind: 'parking',
+		toolbar: placed,
+		parking: targetParking,
+		index: at,
+	}
+	if (refreshDragMode(dragging) !== 'slide') clearToolbarSlide()
+	return true
+}
+
+/**
+ * Remove the dragged tools from wherever the session origin lives, pruning
+ * the emptied toolbar (and its track, for borders). Shared by border and
+ * parking commits so "removed from origin only when added elsewhere" holds
+ * for cross-container moves.
+ */
+function pruneDragOrigin(origin: PaletteDragOrigin, tools: PaletteToolbarItem[]): void {
+	const originToolbar = origin.toolbar
+	for (const tool of tools) {
+		const index = originToolbar.indexOf(tool)
+		if (index >= 0) originToolbar.splice(index, 1)
+	}
+	if (originToolbar.length > 0) return
+	if (origin.kind === 'border') {
+		removeToolbar(origin.track, originToolbar)
+		removeEmptyTrack(origin.border, origin.track)
+	} else {
+		removeParkedToolbar(origin.parking, originToolbar)
+	}
 }
 
 /**
@@ -497,12 +788,39 @@ export function nearestFreeItemSpaceAfter(
 
 /**
  * Check whether the simulated drag selection covers a whole toolbar.
+ *
+ * Container-scoped: only the session's own origin toolbar can match. A
+ * structurally identical toolbar in another container (e.g. parking mirroring
+ * a border) never counts — position is part of instance identity.
  */
 export function isDraggingWholeToolbar(toolbar: PaletteToolbar): boolean {
 	const dragging = palettes.dragging
 	if (!dragging || dragging.tools.length === 0) return false
+	if (toolbar !== dragging.origin.toolbar) return false
 	if (dragging.tools.length !== toolbar.length) return false
 	return dragging.tools.every((tool) => toolbar.includes(tool))
+}
+
+/**
+ * Check whether a toolbar is the session's dragged toolbar *in its own
+ * container*. Pass the toolbar's location alongside it: the same object
+ * rendered in two places matches only where the drag originated.
+ */
+export function isDraggedToolbarAt(
+	toolbar: PaletteToolbar,
+	location: PaletteBorderLocation | PaletteParkingLocation
+): boolean {
+	const dragging = palettes.dragging
+	if (!dragging) return false
+	if (toolbar !== dragging.origin.toolbar) return false
+	if (location.kind !== dragging.origin.kind) return false
+	if (location.kind === 'border' && dragging.origin.kind === 'border') {
+		return location.track === dragging.origin.track && location.border === dragging.origin.border
+	}
+	if (location.kind === 'parking' && dragging.origin.kind === 'parking') {
+		return location.parking === dragging.origin.parking && location.index === dragging.origin.index
+	}
+	return false
 }
 
 /**
@@ -534,17 +852,36 @@ export function refreshDragMode(dragging: PaletteDragging): PaletteDragMode {
  * Index of the track the drag would empty: the track holding a single toolbar
  * whose whole content is dragged (`dragged[0]`'s toolbar size = dragged size
  * and its track size = 1). Returns `undefined` when no such track exists in
- * `border` (partial drag, multi-toolbar track, or another border/region).
+ * `border` (partial drag, multi-toolbar track, another border/region, or a
+ * parking drag — parking has no tracks).
  */
 export function draggingEmptiesTrackIndex(border: PaletteBorder): number | undefined {
 	const dragging = palettes.dragging
 	if (!dragging || dragging.tools.length === 0) return undefined
+	if (dragging.origin.kind !== 'border') return undefined
 	for (let index = 0; index < border.length; index += 1) {
 		const track = border[index]
 		if (track.length !== 1) continue
 		const sole = track[0]
 		if (sole && isDraggingWholeToolbar(sole.toolbar)) return index
 	}
+	return undefined
+}
+
+/**
+ * Index of the parking row the drag would empty: the row whose whole content
+ * is dragged while the stack holds a single row. Returns `undefined` when no
+ * such row exists in `parking` (partial drag, multi-row stack, or a border
+ * drag — borders have no rows). Parking analogue of
+ * `draggingEmptiesTrackIndex`.
+ */
+export function draggingEmptiesParkingRow(parking: PaletteParking): number | undefined {
+	const dragging = palettes.dragging
+	if (!dragging || dragging.tools.length === 0) return undefined
+	if (dragging.origin.kind !== 'parking') return undefined
+	if (parking.length !== 1) return undefined
+	const sole = parking[0]
+	if (sole && isDraggingWholeToolbar(sole)) return 0
 	return undefined
 }
 
@@ -825,6 +1162,7 @@ function startSimulatedDrag(options: {
 		const slide = activeToolbarSlide
 		const dragging = palettes.dragging
 		if (!slide || !dragging || dragging.palette !== palette) return
+		if (dragging.origin.kind !== 'border') return
 		if (slide.toolbar !== dragging.origin.toolbar || slide.track !== dragging.origin.track) return
 		if (!slide.toolbarElement.isConnected) return
 		const horizontal = slide.direction === 'horizontal'
@@ -863,6 +1201,7 @@ function startSimulatedDrag(options: {
 			if (
 				slide &&
 				dragging?.palette === palette &&
+				dragging.origin.kind === 'border' &&
 				slide.toolbar === dragging.origin.toolbar &&
 				slide.track === dragging.origin.track
 			) {
@@ -907,7 +1246,7 @@ export function paletteToolbarDrag(
 			event,
 			palette: live.palette,
 			tools: [...live.toolbar],
-			origin: { toolbar: live.toolbar, track: live.track, border: live.border },
+			origin: { kind: 'border', toolbar: live.toolbar, track: live.track, border: live.border },
 			mode: 'slide',
 			track: live.track,
 			toolbar: live.toolbar,
@@ -962,7 +1301,7 @@ export function paletteItemDrag(
 			event,
 			palette: live.palette,
 			tools: [live.item],
-			origin: { toolbar: live.toolbar, track: live.track, border: live.border },
+			origin: { kind: 'border', toolbar: live.toolbar, track: live.track, border: live.border },
 			mode: live.toolbar.length === 1 ? 'slide' : 'restructure',
 		})
 	}
@@ -989,6 +1328,87 @@ export function paletteItemShield(
 		},
 		destroy() {
 			element.inert = false
+		},
+	}
+}
+
+/**
+ * Parking item drag: like `paletteItemDrag` but the origin is a parking row.
+ * The session carries `kind: 'parking'`, so border predicates (`isDraggingWholeToolbar`
+ * excluded) and slide-follow never match it — a parking grab can never light
+ * up a border toolbar as dragged.
+ */
+export function paletteParkingItemDrag(
+	element: HTMLElement,
+	target: PaletteParkingItemDragTarget | undefined
+): ReturnType<Action> {
+	let current = target
+	if (!current) return
+	const onPointerDown = (event: PointerEvent) => {
+		const live = current
+		if (!live) return
+		if (!live.palette.editing) return
+		if (event.button !== 0) return
+		event.stopPropagation()
+		palettes.inspecting = {
+			item: live.item,
+			palette: live.palette,
+			toolbar: live.toolbar,
+		}
+		startSimulatedDrag({
+			event,
+			palette: live.palette,
+			tools: [live.item],
+			origin: { kind: 'parking', toolbar: live.toolbar, parking: live.parking, index: live.index },
+			mode: live.toolbar.length === 1 ? 'slide' : 'restructure',
+		})
+	}
+	element.addEventListener('pointerdown', onPointerDown)
+	return {
+		update(next: PaletteParkingItemDragTarget | undefined) {
+			current = next
+		},
+		destroy() {
+			element.removeEventListener('pointerdown', onPointerDown)
+		},
+	}
+}
+
+/**
+ * Parking toolbar drag: whole-row grab. No slide-follow arming (parking rows
+ * have no track gaps) — the mode is still `'slide'` so a drop into a border
+ * gap relocates the row object itself.
+ */
+export function paletteParkingToolbarDrag(
+	element: HTMLElement,
+	target: PaletteParkingToolbarDrag | undefined
+): ReturnType<Action> {
+	let current = target
+	if (!current) return
+	const onPointerDown = (event: PointerEvent) => {
+		const live = current
+		if (!live?.palette) return
+		if (!live.palette.editing) return
+		if (event.button !== 0) return
+		if (isEditableTarget(event.target)) return
+		if ((event.target as HTMLElement | null)?.closest?.('.toolbar-item')) return
+		event.preventDefault()
+		palettes.inspecting = undefined
+		startSimulatedDrag({
+			event,
+			palette: live.palette,
+			tools: [...live.toolbar],
+			origin: { kind: 'parking', toolbar: live.toolbar, parking: live.parking, index: live.index },
+			mode: 'slide',
+		})
+	}
+	element.addEventListener('pointerdown', onPointerDown)
+	return {
+		update(next: PaletteParkingToolbarDrag | undefined) {
+			current = next
+		},
+		destroy() {
+			element.removeEventListener('pointerdown', onPointerDown)
 		},
 	}
 }

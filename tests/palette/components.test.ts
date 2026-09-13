@@ -8,6 +8,13 @@ import {
 	palettes,
 } from '$lib/palette/edition.svelte'
 import type { PaletteConfig } from '$lib/palette/types'
+import {
+	reactiveBorder,
+	reactiveItem,
+	reactiveParking,
+	reactiveToolbar,
+	reactiveTrack,
+} from './fixtures.svelte'
 import IdeProbe from './IdeProbe.svelte'
 import PaletteItemDragProbe from './PaletteItemDragProbe.svelte'
 import PaletteItemShieldToggleProbe from './PaletteItemShieldToggleProbe.svelte'
@@ -153,6 +160,7 @@ describe('paletteRoot', () => {
 		render(PaletteItemDragProbe, {
 			props: {
 				target: {
+					kind: 'border',
 					border,
 					direction: 'horizontal',
 					item: firstItem,
@@ -205,6 +213,7 @@ describe('paletteRoot', () => {
 		render(PaletteItemDragProbe, {
 			props: {
 				target: {
+					kind: 'border',
 					border,
 					direction: 'horizontal',
 					item: firstItem,
@@ -285,7 +294,7 @@ describe('paletteRoot', () => {
 			editor: () => ParkingEditorStub as never,
 		} satisfies PaletteConfig)
 		palettes.editing = palette
-		render(ParkingProbe, { props: { palette, toolbars: [[{ tool: 'run' }]] } })
+		render(ParkingProbe, { props: { palette, parking: reactiveParking([{ tool: 'run' }]) } })
 		const button = document.querySelector<HTMLButtonElement>('#parked-run')
 		expect(button).toBeTruthy()
 		await fireEvent.click(button!)
@@ -308,16 +317,20 @@ describe('paletteRoot', () => {
 			editor: () => ParkingEditorStub as never,
 		} satisfies PaletteConfig)
 		palettes.editing = palette
-		render(ParkingProbe, { props: { palette, toolbars: [[{ tool: 'run' }]] } })
+		const parking = reactiveParking([{ tool: 'run' }])
+		render(ParkingProbe, { props: { palette, parking } })
 		const removeButton = document.querySelector<HTMLButtonElement>('.palette-parking-remove')
 		expect(removeButton).toBeTruthy()
+		// Small red bin affordance (not a bare ×).
+		expect(removeButton!.getAttribute('aria-label')).toBe('Delete toolbar')
+		expect(removeButton!.textContent).toContain('🗑')
 		expect(document.querySelector('#parked-run')).toBeTruthy()
 		await fireEvent.click(removeButton!)
 		expect(document.querySelector('.palette-parking-remove')).toBeNull()
 		expect(document.querySelector('#parked-run')).toBeNull()
 	})
 
-	it('G3: parking bound to a live border removes from the real border', async () => {
+	it('parking owns its stack: removing a row prunes parking, never a border', async () => {
 		const palette = new Palette({
 			tools: {
 				run: {
@@ -333,16 +346,83 @@ describe('paletteRoot', () => {
 			editor: () => ParkingEditorStub as never,
 		} satisfies PaletteConfig)
 		palettes.editing = palette
-		const liveToolbar = [{ tool: 'run' }]
-		const liveTrack = [{ space: 0, toolbar: liveToolbar }]
-		const liveBorder = [liveTrack]
-		render(ParkingProbe, { props: { palette, toolbars: [], border: liveBorder } })
+		const parking = reactiveParking([{ tool: 'run' }])
+		render(ParkingProbe, { props: { palette, parking } })
 		expect(document.querySelector('#parked-run')).toBeTruthy()
 		await fireEvent.click(document.querySelector<HTMLButtonElement>('.palette-parking-remove')!)
-		// The live border — not a local copy — is pruned. (The plain test
-		// array is not `$state`-reactive, so the DOM row lingers here; in the
-		// app `top` is `$state` and the row disappears with the splice.)
-		expect(liveBorder).toHaveLength(0)
+		// The parking stack — not any border — is pruned.
+		expect(parking).toHaveLength(0)
+	})
+
+	it('renders the empty parking shell with a hint instead of nothing', async () => {
+		const palette = new Palette({
+			tools: {
+				run: {
+					get can() {
+						return true
+					},
+					run() {},
+				},
+			},
+			keys: {
+				N: 'run',
+			},
+			editor: () => ParkingEditorStub as never,
+		} satisfies PaletteConfig)
+		palettes.editing = palette
+		render(ParkingProbe, { props: { palette, parking: reactiveParking() } })
+		expect(document.querySelector('[data-container="parking"]')).toBeTruthy()
+		expect(document.querySelector('[data-parking-gap-index="0"]')).toBeTruthy()
+		expect(document.querySelector('[data-testid="parking-empty-hint"]')).toBeTruthy()
+	})
+
+	it('highlights the empty parking gap while dragging over it', async () => {
+		const palette = new Palette({
+			tools: {
+				run: {
+					get can() {
+						return true
+					},
+					run() {},
+				},
+			},
+			keys: {
+				N: 'run',
+			},
+			editor: () => ParkingEditorStub as never,
+		} satisfies PaletteConfig)
+		palettes.editing = palette
+		const parking = reactiveParking()
+		const originToolbar = reactiveToolbar(reactiveItem('origin'))
+		const originTrack = reactiveTrack(originToolbar)
+		const border = reactiveBorder(originTrack)
+		const { container } = render(ParkingProbe, { props: { palette, parking } })
+		const gap = container.querySelector<HTMLElement>('[data-parking-gap-index="0"]')
+		expect(gap).toBeTruthy()
+		expect(gap!.classList.contains('highlighted')).toBe(false)
+		palettes.dragging = {
+			palette,
+			tools: [originToolbar[0]],
+			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
+			mode: 'restructure',
+		}
+		// Hovering the gap commits (a fresh row lands in parking), so assert
+		// the commit happened and the session followed it into parking — the
+		// fresh row itself is the visual feedback (previewing is moving),
+		// and the gap memo keeps the committed gap recorded.
+		gap!.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				cancelable: true,
+				pointerId: 1,
+				clientX: 10,
+				clientY: 10,
+			})
+		)
+		await Promise.resolve()
+		expect(parking).toHaveLength(1)
+		expect(palettes.dragging?.origin.kind).toBe('parking')
+		palettes.dragging = undefined
 	})
 
 	it('exposes paletteRoot and paletteItemDrag as actions', () => {

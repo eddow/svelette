@@ -2,9 +2,16 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
 	actualTrackSpaceAt,
 	commitDraggedToItemSpace,
+	commitDraggedToParking,
+	commitDraggedToParkingGap,
 	commitDraggedToTrackSpace,
+	draggingEmptiesParkingRow,
+	draggingEmptiesTrackIndex,
+	findOwnershipViolations,
 	insertToolbar,
 	insertTrackWithToolbar,
+	isDraggedToolbarAt,
+	isDraggingWholeToolbar,
 	Palette,
 	palettes,
 	removeEmptyTrack,
@@ -13,7 +20,13 @@ import {
 	resolveDragMode,
 } from '$lib/palette/edition.svelte'
 import type { PaletteBorder, PaletteToolbar, PaletteTrack } from '$lib/palette/types'
-import { reactiveBorder, reactiveItem, reactiveToolbar, reactiveTrack } from './fixtures.svelte'
+import {
+	reactiveBorder,
+	reactiveItem,
+	reactiveParking,
+	reactiveToolbar,
+	reactiveTrack,
+} from './fixtures.svelte'
 
 function testPalette(): Palette {
 	return new Palette({ tools: {}, keys: {} })
@@ -128,6 +141,7 @@ describe('track-gap commit (mode model)', () => {
 			palette: options.palette,
 			tools: options.tools,
 			origin: {
+				kind: 'border',
 				toolbar: options.originToolbar,
 				track: options.originTrack,
 				border: options.border,
@@ -331,11 +345,16 @@ describe('drag mode (derived and cached)', () => {
 		palettes.dragging = {
 			palette: testPalette(),
 			tools: [dragged],
-			origin: { toolbar: originToolbar, track: reactiveTrack(), border: reactiveBorder() },
+			origin: {
+				kind: 'border',
+				toolbar: originToolbar,
+				track: reactiveTrack(),
+				border: reactiveBorder(),
+			},
 			mode: 'restructure',
 		}
 		// "Anything else than `dragging` in my toolbar?" — yes.
-		expect(resolveDragMode(palettes.dragging)).toBe('restructure')
+		expect(palettes.dragging && resolveDragMode(palettes.dragging)).toBe('restructure')
 	})
 
 	it('is a slide when the dragged tools are the whole toolbar', () => {
@@ -344,11 +363,16 @@ describe('drag mode (derived and cached)', () => {
 		palettes.dragging = {
 			palette: testPalette(),
 			tools: [dragged],
-			origin: { toolbar: originToolbar, track: reactiveTrack(), border: reactiveBorder() },
+			origin: {
+				kind: 'border',
+				toolbar: originToolbar,
+				track: reactiveTrack(),
+				border: reactiveBorder(),
+			},
 			mode: 'slide',
 		}
 		// A lone tool in its toolbar IS that toolbar — slide from the start.
-		expect(resolveDragMode(palettes.dragging)).toBe('slide')
+		expect(palettes.dragging && resolveDragMode(palettes.dragging)).toBe('slide')
 	})
 
 	it('becomes a slide once a restructure extracts its tools', () => {
@@ -363,7 +387,7 @@ describe('drag mode (derived and cached)', () => {
 		palettes.dragging = {
 			palette,
 			tools: [dragged],
-			origin: { toolbar: originToolbar, track: originTrack, border },
+			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
 			mode: 'restructure',
 		}
 
@@ -388,7 +412,7 @@ describe('drag mode (derived and cached)', () => {
 		palettes.dragging = {
 			palette,
 			tools: [moved],
-			origin: { toolbar: sliding, track: slidingTrack, border },
+			origin: { kind: 'border', toolbar: sliding, track: slidingTrack, border },
 			mode: 'slide',
 		}
 
@@ -414,10 +438,317 @@ describe('drag mode (derived and cached)', () => {
 		palettes.dragging = {
 			palette,
 			tools: [first, second],
-			origin: { toolbar, track, border },
+			origin: { kind: 'border', toolbar, track, border },
 			mode: 'slide',
 		}
 
-		expect(resolveDragMode(palettes.dragging)).toBe('slide')
+		expect(palettes.dragging && resolveDragMode(palettes.dragging)).toBe('slide')
+	})
+})
+
+describe('container-scoped drag identity (parking vs border)', () => {
+	afterEach(() => {
+		document.body.replaceChildren()
+		palettes.editing = undefined
+		palettes.inspecting = undefined
+		palettes.dragging = undefined
+	})
+
+	it('a border drag never matches a parking toolbar holding the same object', () => {
+		const palette = testPalette()
+		const shared = reactiveItem('shared')
+		const borderToolbar = reactiveToolbar(shared, reactiveItem('other'))
+		const borderTrack = reactiveTrack(borderToolbar)
+		const border = reactiveBorder(borderTrack)
+		// Same object rendered in parking (the old mirror bug): the drag
+		// originated in the border, so only the border toolbar matches.
+		const parking = reactiveParking(borderToolbar)
+		palettes.dragging = {
+			palette,
+			tools: [shared],
+			origin: { kind: 'border', toolbar: borderToolbar, track: borderTrack, border },
+			mode: 'restructure',
+		}
+		expect(isDraggingWholeToolbar(parking[0])).toBe(false)
+		expect(
+			isDraggedToolbarAt(borderToolbar, {
+				kind: 'border',
+				toolbar: borderToolbar,
+				track: borderTrack,
+				border,
+			})
+		).toBe(true)
+		expect(
+			isDraggedToolbarAt(borderToolbar, {
+				kind: 'parking',
+				toolbar: borderToolbar,
+				parking,
+				index: 0,
+			})
+		).toBe(false)
+	})
+
+	it('a parking drag never matches its mirror in a border', () => {
+		const palette = testPalette()
+		const row = reactiveToolbar(reactiveItem('p'))
+		const parking = reactiveParking(row)
+		const borderToolbar = reactiveToolbar(reactiveItem('b'))
+		const borderTrack = reactiveTrack(borderToolbar)
+		const border = reactiveBorder(borderTrack)
+		palettes.dragging = {
+			palette,
+			tools: [...row],
+			origin: { kind: 'parking', toolbar: row, parking, index: 0 },
+			mode: 'slide',
+		}
+		expect(isDraggingWholeToolbar(borderToolbar)).toBe(false)
+		expect(isDraggedToolbarAt(row, { kind: 'parking', toolbar: row, parking, index: 0 })).toBe(true)
+		expect(
+			isDraggedToolbarAt(row, { kind: 'border', toolbar: row, track: borderTrack, border })
+		).toBe(false)
+		// Parking drags have no tracks: the border emptied-track guard stays inert.
+		expect(draggingEmptiesTrackIndex(border)).toBe(undefined)
+	})
+
+	it('moves a tool from a border into a parking row (ownership transfer)', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originToolbar = reactiveToolbar(reactiveItem('keep'), dragged)
+		const originTrack = reactiveTrack(originToolbar)
+		const border = reactiveBorder(originTrack)
+		const parked = reactiveToolbar(reactiveItem('parked'))
+		const parking = reactiveParking(parked)
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
+			mode: 'restructure',
+		}
+		expect(commitDraggedToParking(parked, parking, 0, 1)).toBe(true)
+		expect(originToolbar).toHaveLength(1)
+		expect(parked).toContain(dragged)
+		expect(palettes.dragging?.origin.kind).toBe('parking')
+		expect(
+			findOwnershipViolations({
+				borders: { top: border, right: [], bottom: [], left: [] },
+				parking,
+			})
+		).toEqual([])
+	})
+})
+
+describe('parking gap commits (standard stack)', () => {
+	afterEach(() => {
+		document.body.replaceChildren()
+		palettes.editing = undefined
+		palettes.inspecting = undefined
+		palettes.dragging = undefined
+	})
+
+	it('creates a fresh row from a border subset drag', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originToolbar = reactiveToolbar(reactiveItem('keep'), dragged)
+		const originTrack = reactiveTrack(originToolbar)
+		const border = reactiveBorder(originTrack)
+		const parking = reactiveParking()
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
+			mode: 'restructure',
+		}
+		expect(commitDraggedToParkingGap(parking, 0)).toBe(true)
+		expect(parking).toHaveLength(1)
+		expect(parking[0]).toContain(dragged)
+		expect(originToolbar).toHaveLength(1)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'parking', index: 0 })
+		expect(palettes.dragging?.mode).toBe('slide')
+		expect(
+			findOwnershipViolations({
+				borders: { top: border, right: [], bottom: [], left: [] },
+				parking,
+			})
+		).toEqual([])
+	})
+
+	it('relocates a whole border toolbar as a row (identity preserved)', () => {
+		const palette = testPalette()
+		const originToolbar = reactiveToolbar(reactiveItem('a'), reactiveItem('b'))
+		const originTrack = reactiveTrack(originToolbar)
+		const border = reactiveBorder(originTrack)
+		const parking = reactiveParking()
+		palettes.dragging = {
+			palette,
+			tools: [...originToolbar],
+			origin: { kind: 'border', toolbar: originToolbar, track: originTrack, border },
+			mode: 'slide',
+		}
+		expect(commitDraggedToParkingGap(parking, 0)).toBe(true)
+		expect(parking).toHaveLength(1)
+		expect(parking[0]).toBe(originToolbar)
+		expect(border).toHaveLength(0)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'parking', index: 0 })
+	})
+
+	it('reorders a parked row within its own stack', () => {
+		const palette = testPalette()
+		const first = reactiveToolbar(reactiveItem('first'))
+		const second = reactiveToolbar(reactiveItem('second'))
+		const parking = reactiveParking(first, second)
+		palettes.dragging = {
+			palette,
+			tools: [...first],
+			origin: { kind: 'parking', toolbar: first, parking, index: 0 },
+			mode: 'slide',
+		}
+		expect(commitDraggedToParkingGap(parking, 2)).toBe(true)
+		expect(parking).toHaveLength(2)
+		expect(parking[0]).toBe(second)
+		expect(parking[1]).toBe(first)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'parking', index: 1 })
+	})
+
+	it('treats the gaps flanking the moved row as keep-moving, not destinations', () => {
+		const palette = testPalette()
+		const first = reactiveToolbar(reactiveItem('first'))
+		const second = reactiveToolbar(reactiveItem('second'))
+		const parking = reactiveParking(first, second)
+		palettes.dragging = {
+			palette,
+			tools: [...first],
+			origin: { kind: 'parking', toolbar: first, parking, index: 0 },
+			mode: 'slide',
+		}
+		expect(commitDraggedToParkingGap(parking, 0)).toBe(false)
+		expect(commitDraggedToParkingGap(parking, 1)).toBe(false)
+		expect(parking).toHaveLength(2)
+		expect(parking[0]).toBe(first)
+	})
+
+	it('extracts a parking subset into a fresh row', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originRow = reactiveToolbar(reactiveItem('keep'), dragged)
+		const parking = reactiveParking(originRow)
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'parking', toolbar: originRow, parking, index: 0 },
+			mode: 'restructure',
+		}
+		expect(commitDraggedToParkingGap(parking, 1)).toBe(true)
+		expect(parking).toHaveLength(2)
+		expect(originRow).toHaveLength(1)
+		expect(parking[1]).toContain(dragged)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'parking', index: 1 })
+	})
+
+	it('reports the row a parking drag would empty', () => {
+		const palette = testPalette()
+		const row = reactiveToolbar(reactiveItem('solo'))
+		const parking = reactiveParking(row)
+		palettes.dragging = {
+			palette,
+			tools: [...row],
+			origin: { kind: 'parking', toolbar: row, parking, index: 0 },
+			mode: 'slide',
+		}
+		expect(draggingEmptiesParkingRow(parking)).toBe(0)
+	})
+
+	it('reports no emptied row for partial or multi-row parking drags', () => {
+		const palette = testPalette()
+		const row = reactiveToolbar(reactiveItem('keep'), reactiveItem('dragged'))
+		const other = reactiveToolbar(reactiveItem('other'))
+		const parking = reactiveParking(row, other)
+		palettes.dragging = {
+			palette,
+			tools: [row[1]],
+			origin: { kind: 'parking', toolbar: row, parking, index: 0 },
+			mode: 'restructure',
+		}
+		expect(draggingEmptiesParkingRow(parking)).toBe(undefined)
+	})
+})
+
+describe('parking → border commits (cross-container symmetry)', () => {
+	afterEach(() => {
+		document.body.replaceChildren()
+		palettes.editing = undefined
+		palettes.inspecting = undefined
+		palettes.dragging = undefined
+	})
+
+	it('merges a parked tool into a border toolbar (origin becomes border)', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originRow = reactiveToolbar(reactiveItem('keep'), dragged)
+		const parking = reactiveParking(originRow)
+		const host = reactiveToolbar(reactiveItem('host'))
+		const hostTrack = reactiveTrack(host)
+		const border = reactiveBorder(hostTrack)
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'parking', toolbar: originRow, parking, index: 0 },
+			mode: 'restructure',
+		}
+		expect(commitDraggedToItemSpace(host, hostTrack, border, 1)).toBe(true)
+		expect(host).toContain(dragged)
+		expect(originRow).toHaveLength(1)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'border' })
+		expect(
+			findOwnershipViolations({
+				borders: { top: border, right: [], bottom: [], left: [] },
+				parking,
+			})
+		).toEqual([])
+	})
+
+	it('slides a whole parked row into a track gap (identity preserved)', () => {
+		const palette = testPalette()
+		const row = reactiveToolbar(reactiveItem('a'), reactiveItem('b'))
+		const parking = reactiveParking(row)
+		const host = reactiveToolbar(reactiveItem('host'))
+		const hostTrack = reactiveTrack(host)
+		const border = reactiveBorder(hostTrack)
+		palettes.dragging = {
+			palette,
+			tools: [...row],
+			origin: { kind: 'parking', toolbar: row, parking, index: 0 },
+			mode: 'slide',
+		}
+		expect(commitDraggedToTrackSpace(hostTrack, border, 1)).toBe(true)
+		expect(parking).toHaveLength(0)
+		expect(hostTrack).toHaveLength(2)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'border' })
+		expect(
+			findOwnershipViolations({
+				borders: { top: border, right: [], bottom: [], left: [] },
+				parking,
+			})
+		).toEqual([])
+	})
+
+	it('extracts a parked subset into a fresh border toolbar', () => {
+		const palette = testPalette()
+		const dragged = reactiveItem('dragged')
+		const originRow = reactiveToolbar(reactiveItem('keep'), dragged)
+		const parking = reactiveParking(originRow)
+		const host = reactiveToolbar(reactiveItem('host'))
+		const hostTrack = reactiveTrack(host)
+		const border = reactiveBorder(hostTrack)
+		palettes.dragging = {
+			palette,
+			tools: [dragged],
+			origin: { kind: 'parking', toolbar: originRow, parking, index: 0 },
+			mode: 'restructure',
+		}
+		expect(commitDraggedToTrackSpace(hostTrack, border, 0)).toBe(true)
+		expect(originRow).toHaveLength(1)
+		expect(hostTrack).toHaveLength(2)
+		expect(palettes.dragging?.origin).toMatchObject({ kind: 'border' })
+		expect(palettes.dragging?.mode).toBe('slide')
 	})
 })

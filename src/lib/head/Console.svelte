@@ -17,7 +17,7 @@
 		setPaletteCommandBoxInput
 	} from '$lib/palette/edition.svelte'
 	import type { Palette as PaletteRuntime } from '$lib/palette/palette.svelte'
-	import type { PaletteBorder, PaletteEditorContext, PaletteToolbar } from '$lib/palette/types'
+	import type { PaletteBorder, PaletteEditorContext, PaletteParking } from '$lib/palette/types'
 
 	type Props = {
 		palette: PaletteRuntime
@@ -25,9 +25,12 @@
 		left?: PaletteBorder
 		right?: PaletteBorder
 		bottom?: PaletteBorder
+		/** Independent parking stack. Never a live border — parking owns its
+		 * toolbars outright (single ownership). */
+		parking?: PaletteParking
 	}
 
-	let { palette, top, left, right, bottom }: Props = $props()
+	let { palette, top, left, right, bottom, parking }: Props = $props()
 
 	// Auto-detect whether a `commandBox` item is displayed in any border. If it
 	// is, the console is edit-only (the toolbar launcher is the edit entry
@@ -80,8 +83,9 @@
 	// The inspected item (selected on the toolbar via `pointerdown`) drives the
 	// configurator: label/icon/hint/editor/tone plus the item-level delete
 	// action (G2). The configurator edits presentation in place; deletion
-	// removes the item from its live toolbar/track/border (carried on
-	// `palettes.inspecting`) and clears the inspector.
+	// removes the item from its live container (border toolbar/track/border
+	// or parking toolbar/stack, carried on `palettes.inspecting`) and clears
+	// the inspector.
 	const inspecting = $derived(
 		palettes.inspecting?.palette === (palette as never) ? palettes.inspecting : undefined
 	)
@@ -93,14 +97,21 @@
 	)
 	const inspectingLocation = $derived(
 		inspecting?.toolbar !== undefined &&
-			inspecting?.track !== undefined &&
-			inspecting?.border !== undefined
+			inspecting?.parking !== undefined &&
+			inspecting?.parkingIndex !== undefined
 			? {
 					toolbar: inspecting.toolbar as never,
-					track: inspecting.track as never,
-					border: inspecting.border as never
+					parking: inspecting.parking as never
 				}
-			: undefined
+			: inspecting?.toolbar !== undefined &&
+				  inspecting?.track !== undefined &&
+				  inspecting?.border !== undefined
+				? {
+						toolbar: inspecting.toolbar as never,
+						track: inspecting.track as never,
+						border: inspecting.border as never
+					}
+				: undefined
 	)
 	const Configurator = $derived.by<Component<{ context: PaletteEditorContext }> | undefined>(() => {
 		if (!inspectingItem) return undefined
@@ -126,10 +137,17 @@
 			) as unknown as PaletteEditorContext & { scope: Record<string, unknown> }
 			// Carry the live location so `BaseConfigurator`'s delete button can
 			// call `configuratorPresenter(context, location).remove()`.
+			// Container-scoped: parking items carry toolbar+parking (never a
+			// border), so delete prunes the parking row, not a border toolbar.
 			if (inspectingLocation) {
-				context.scope.toolbar = inspectingLocation.toolbar
-				context.scope.track = inspectingLocation.track
-				context.scope.border = inspectingLocation.border
+				if ('parking' in inspectingLocation) {
+					context.scope.toolbar = inspectingLocation.toolbar
+					context.scope.parking = inspectingLocation.parking
+				} else {
+					context.scope.toolbar = inspectingLocation.toolbar
+					context.scope.track = inspectingLocation.track
+					context.scope.border = inspectingLocation.border
+				}
 			}
 			return context
 		} catch {
@@ -149,13 +167,52 @@
 		}
 	})
 
-	// G3 — parking binds the LIVE top border (not a snapshot): rows render
-	// live toolbars and `×` removes from the real border via `removePaletteItem`
-	// plumbing. The command-box item is excluded from the parking *view*
-	// (mirrors the reference `popupParkingToolbars`) by filtering at render —
-	// the live border itself is untouched. (Drag & drop was stripped; parking
-	// rows are display-only until the next movement design lands.)
+	// Independent parking stack: the console always renders `parking` (never a
+	// live border), so a top-bar drag can never light up a parking row as
+	// dragged. Empty parking stays visible as a bordered strip with a hint —
+	// like a border stack that never collapses. The command-box item is
+	// excluded from the parking *view* (mirrors the reference
+	// `popupParkingToolbars`) by filtering at render — the stack itself is
+	// untouched.
 	const parkingScope = $derived({ palette: palette as never })
+
+	// Console panel-background hover (the `Ide` mask analogue): while editing
+	// + dragging, a pointer over the panel but outside the parking rows/gaps
+	// (and outside popups/dialogs) keeps the parking end gap lit so the stack
+	// reads as a drop target while dragging over the console.
+	let parkingMaskHover = $state(false)
+	const isConsoleDragging = $derived(palettes.dragging?.palette === (palette as never))
+
+	function onPanelPointerMove(event: PointerEvent): void {
+		if (!isEditing || !isConsoleDragging) {
+			parkingMaskHover = false
+			return
+		}
+		const target = event.target
+		if (!(target instanceof HTMLElement)) {
+			parkingMaskHover = false
+			return
+		}
+		// Over parking itself → parking owns the highlight, not the mask.
+		if (target.closest('.palette-parking')) {
+			parkingMaskHover = false
+			return
+		}
+		// On a popup/dialog → neither parking nor mask.
+		if (target.closest('.svelette-palette-drawer__popup, dialog')) {
+			parkingMaskHover = false
+			return
+		}
+		parkingMaskHover = true
+	}
+
+	function onPanelPointerLeave(): void {
+		parkingMaskHover = false
+	}
+
+	$effect(() => {
+		if (!isEditing || !isConsoleDragging) parkingMaskHover = false
+	})
 
 	const selectedEntry = $derived<PaletteAddItemCommandEntry | undefined>(
 		consoleState.selectedEntryId
@@ -194,7 +251,12 @@
 		if (event.target === event.currentTarget) close()
 	}}
 >
-	<div class="palette-default-command-panel">
+	<div
+		class="palette-default-command-panel"
+		role="presentation"
+		onpointermove={onPanelPointerMove}
+		onpointerleave={onPanelPointerLeave}
+	>
 		<button
 			type="button"
 			class="palette-default-command-close"
@@ -204,14 +266,13 @@
 			×
 		</button>
 		<div class="palette-default-command-top">
-			{#if top.length > 0}
+			{#if parking}
 				<Parking
-					toolbars={[]}
-					border={top}
-					region="top"
+					{parking}
 					palette={palette as never}
 					scope={parkingScope}
 					el={{ class: 'palette-default-command-parking' }}
+					maskActive={parkingMaskHover}
 				/>
 			{/if}
 			<div class="palette-default-command-bottom">

@@ -6,10 +6,13 @@ move/up, blur/cancel cleanup; no preview element). Components:
 `src/lib/palette/components/` (`Ide`, `ToolbarBorder`, `ToolbarTrack`,
 `Toolbar`, `PaletteItem`, `Parking`, `DrawerEditor`, `DrawerPopup`).
 
-## Borders, tracks, toolbars
+## Borders, tracks, toolbars, parking
 
 `PaletteBorders` = `{ top, right, bottom, left }`. A border is a list of tracks;
 a track is a list of `{ space, toolbar }` slots; a toolbar is a list of items.
+`PaletteParking` is an independent stack of toolbars outside the borders — it
+owns its toolbars outright (single ownership: no object is ever shared with a
+border) and persists via `serialize`/`hydrate`.
 
 ### Track spacing invariant
 
@@ -37,23 +40,39 @@ remains of the total — never stored, always derived.
 - `ToolbarBorder` renders one region (`inverse` reverses track order for
   right/bottom); direction `horizontal` (top/bottom) or `vertical` (left/right).
 - `ToolbarTrack` renders slots + spacing; `Toolbar` renders one toolbar with
-  item spaces (between items) and a toolbar space at index 0.
+  item spaces (between items) and a toolbar space at index 0. It takes either
+  a border location (`border`/`track`/`trackIndex`/`region`) or a parking
+  location (`parking`/`parkingIndex`) — never both — and drags, commits,
+  and highlights as that container only.
 - `PaletteItem` binds `resolveEditorContext` output to `<Editor context>`.
-- `Parking` owns a border seeded once from `toolbars`, with a delete button per
-  row while editing (mirrors the reference `parkingBorder` memo).
+- `Parking` owns the independent `parking` stack, always rendered (bordered
+  empty strip with a hint when empty), with a delete button per row while
+  editing (`removeParkedToolbar`) plus stack gaps that behave like a border's
+  stack gaps: highlight while dragging (flanking gaps on row hover, single gap
+  on direct hover, `draggingEmptiesParkingRow` suppression), commit on hover
+  via `commitDraggedToParkingGap` (fresh row for subsets, relocate for whole
+  toolbars/rows, either origin container), and stay lit under console
+  panel-background hover via the `maskActive` prop.
 
 Helpers: `actualTrackSpaceAt`, `insertToolbar` (split a gap), `removeToolbar`
-(merge surrounding gaps), `insertTrackWithToolbar`, `removeEmptyTrack`,
+(merge surrounding gaps), `removeParkedToolbar` (parking rows, no spacing),
+`commitDraggedToParkingGap` (parking stack-gap commits),
+`draggingEmptiesParkingRow` (parking analogue of `draggingEmptiesTrackIndex`),
+`insertTrackWithToolbar`, `removeEmptyTrack`,
 `moveToolbarToTrack` / `moveToolbarToStack`, `resizeToolbar`,
-`resolveItemPlacementTarget` (linear cross-region placement).
+`resolveItemPlacementTarget` (linear cross-region placement). Instance
+identity: `canonicalItemTool` / `itemFingerprint` /
+`findOwnershipViolations` (same object in two containers is a bug).
 
 ## Svelte actions
 
 | Action                | Element              | Behaviour                                              |
 | --------------------- | -------------------- | ------------------------------------------------------ |
 | `paletteRoot`         | IDE root             | tabindex, editing/dragging classes + data flags, keydown tool resolution, clears `inspecting` when edit ends |
-| `paletteToolbarDrag`  | toolbar              | edit-mode `pointerdown` starts a toolbar drag (`phase: 'toolbar'`) |
-| `paletteItemDrag`     | item guard (edit)    | `pointerdown` inspects the item, then starts a tool-set drag (`phase: 'tools'`) |
+| `paletteToolbarDrag`  | toolbar (border)     | edit-mode `pointerdown` starts a toolbar drag (`mode: 'slide'`, origin `kind: 'border'`) |
+| `paletteParkingToolbarDrag` | toolbar (parking) | edit-mode `pointerdown` starts a whole-row drag (origin `kind: 'parking'`, no slide-follow) |
+| `paletteItemDrag`     | item guard (border, edit) | `pointerdown` inspects the item, then starts a tool-set drag (`kind: 'border'`) |
+| `paletteParkingItemDrag` | item guard (parking, edit) | `pointerdown` inspects the item, then starts a tool-set drag (`kind: 'parking'`) |
 | `paletteItemShield`   | item content         | blocks interaction while editing                       |
 
 Actions return `{ destroy() }` (Svelte action contract). `paletteRoot` runs

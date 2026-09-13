@@ -39,6 +39,7 @@ describe('item inspect (no movement yet)', () => {
 		render(PaletteItemDragProbe, {
 			props: {
 				target: {
+					kind: 'border',
 					border,
 					direction: 'horizontal',
 					item: firstItem,

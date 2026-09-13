@@ -83,7 +83,7 @@ allowed-values + keyword filters). The add-box results (`console-results`, seede
 `paletteAddItemEntries`) are `draggable`; drags start native HTML5
 (`PALETTE_CATALOG_DRAG_MIME` on `dataTransfer`, `beginPaletteCatalogInsertDrag` +
 `notifyPaletteCatalogNativeDragStarted` on `dragstart`); drops land in the toolbar/track/stack
-zones. `Parking` (seeded from the live top border minus the command box) offers remove/restore
+zones. `Parking` (the independent parking stack minus the command box) offers remove/restore
 while editing.
 
 Payloads: `serializePaletteCatalogDragPayload` / `parsePaletteCatalogDragPayload`

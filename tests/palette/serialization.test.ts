@@ -1,7 +1,9 @@
 import { mount } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import {
+	findOwnershipViolations,
 	hydratePaletteLayout,
+	itemFingerprint,
 	Palette,
 	serializePaletteLayout,
 	validatePaletteLayout,
@@ -344,13 +346,13 @@ describe('Palette Layout Serialization', () => {
 
 			const hydrated = hydratePaletteLayout(palette, serialized)
 
-			expect(hydrated.top).toHaveLength(1)
-			expect(hydrated.top[0]).toHaveLength(1)
-			expect(hydrated.top[0][0].space).toBe(0.1)
-			expect(hydrated.top[0][0].toolbar).toHaveLength(1)
-			expect(hydrated.top[0][0].toolbar[0].tool).toBe('testTool')
-			expect(hydrated.top[0][0].toolbar[0].editor).toBe('boolean')
-			expect(hydrated.top[0][0].toolbar[0].config).toEqual({ icon: '🔔' })
+			expect(hydrated.borders.top).toHaveLength(1)
+			expect(hydrated.borders.top[0]).toHaveLength(1)
+			expect(hydrated.borders.top[0][0].space).toBe(0.1)
+			expect(hydrated.borders.top[0][0].toolbar).toHaveLength(1)
+			expect(hydrated.borders.top[0][0].toolbar[0].tool).toBe('testTool')
+			expect(hydrated.borders.top[0][0].toolbar[0].editor).toBe('boolean')
+			expect(hydrated.borders.top[0][0].toolbar[0].config).toEqual({ icon: '🔔' })
 		})
 
 		it('should handle empty borders', () => {
@@ -367,10 +369,11 @@ describe('Palette Layout Serialization', () => {
 
 			const hydrated = hydratePaletteLayout(palette, serialized)
 
-			expect(hydrated.top).toEqual([])
-			expect(hydrated.right).toEqual([])
-			expect(hydrated.bottom).toEqual([])
-			expect(hydrated.left).toEqual([])
+			expect(hydrated.borders.top).toEqual([])
+			expect(hydrated.borders.right).toEqual([])
+			expect(hydrated.borders.bottom).toEqual([])
+			expect(hydrated.borders.left).toEqual([])
+			expect(hydrated.parking).toEqual([])
 		})
 
 		it('should produce borders reactive to structural changes', async () => {
@@ -380,9 +383,9 @@ describe('Palette Layout Serialization', () => {
 				borders: { top: [], right: [], bottom: [], left: [] },
 			})
 			const host = document.createElement('div')
-			mount(HydratedBordersProbe, { target: host, props: { borders: hydrated } })
+			mount(HydratedBordersProbe, { target: host, props: { borders: hydrated.borders } })
 			expect(host.textContent).toContain('tracks:0')
-			hydrated.top.push([{ space: 0.1, toolbar: [{ tool: 'testTool' }] }])
+			hydrated.borders.top.push([{ space: 0.1, toolbar: [{ tool: 'testTool' }] }])
 			await Promise.resolve()
 			expect(host.textContent).toContain('tracks:1')
 		})
@@ -401,28 +404,29 @@ describe('Palette Layout Serialization', () => {
 
 			// Hydrate
 			const hydrated = hydratePaletteLayout(palette, serialized)
+			const borders = hydrated.borders
 
 			// Verify structure is preserved
-			expect(hydrated.top).toHaveLength(originalBorders.top.length)
-			expect(hydrated.bottom).toHaveLength(originalBorders.bottom.length)
-			expect(hydrated.right).toHaveLength(originalBorders.right.length)
-			expect(hydrated.left).toHaveLength(originalBorders.left.length)
+			expect(borders.top).toHaveLength(originalBorders.top.length)
+			expect(borders.bottom).toHaveLength(originalBorders.bottom.length)
+			expect(borders.right).toHaveLength(originalBorders.right.length)
+			expect(borders.left).toHaveLength(originalBorders.left.length)
 
 			// Verify top border content
-			if (hydrated.top.length > 0 && originalBorders.top.length > 0) {
-				expect(hydrated.top[0]).toHaveLength(originalBorders.top[0].length)
-				if (hydrated.top[0].length > 0 && originalBorders.top[0].length > 0) {
-					expect(hydrated.top[0][0].space).toBe(originalBorders.top[0][0].space)
-					expect(hydrated.top[0][0].toolbar).toHaveLength(originalBorders.top[0][0].toolbar.length)
+			if (borders.top.length > 0 && originalBorders.top.length > 0) {
+				expect(borders.top[0]).toHaveLength(originalBorders.top[0].length)
+				if (borders.top[0].length > 0 && originalBorders.top[0].length > 0) {
+					expect(borders.top[0][0].space).toBe(originalBorders.top[0][0].space)
+					expect(borders.top[0][0].toolbar).toHaveLength(originalBorders.top[0][0].toolbar.length)
 				}
 			}
 
 			// Verify bottom border content
-			if (hydrated.bottom.length > 0 && originalBorders.bottom.length > 0) {
-				expect(hydrated.bottom[0]).toHaveLength(originalBorders.bottom[0].length)
-				if (hydrated.bottom[0].length > 0 && originalBorders.bottom[0].length > 0) {
-					expect(hydrated.bottom[0][0].space).toBe(originalBorders.bottom[0][0].space)
-					expect(hydrated.bottom[0][0].toolbar).toHaveLength(
+			if (borders.bottom.length > 0 && originalBorders.bottom.length > 0) {
+				expect(borders.bottom[0]).toHaveLength(originalBorders.bottom[0].length)
+				if (borders.bottom[0].length > 0 && originalBorders.bottom[0].length > 0) {
+					expect(borders.bottom[0][0].space).toBe(originalBorders.bottom[0][0].space)
+					expect(borders.bottom[0][0].toolbar).toHaveLength(
 						originalBorders.bottom[0][0].toolbar.length
 					)
 				}
@@ -456,12 +460,83 @@ describe('Palette Layout Serialization', () => {
 			}
 
 			const serialized = serializePaletteLayout(complexBorders)
-			const hydrated = hydratePaletteLayout(palette, serialized)
+			const hydrated = hydratePaletteLayout(palette, serialized).borders
 
 			expect(hydrated.top).toHaveLength(3) // 2 tracks in first border + 1 in second
 			expect(hydrated.top[0][0].space).toBe(0.1)
 			expect(hydrated.top[1][0].space).toBe(0.2)
 			expect(hydrated.top[2][0].space).toBe(0.3)
+		})
+	})
+
+	describe('parking persistence + ownership', () => {
+		it('round-trips parking alongside borders', () => {
+			const palette = createTestPalette()
+			const borders = createTestBorders()
+			const parking = [[{ tool: 'testTool', editor: 'boolean' }]]
+			const serialized = serializePaletteLayout(borders, parking as never)
+			expect(validatePaletteLayout(serialized)).toBe(true)
+			expect(serialized.parking).toHaveLength(1)
+			const hydrated = hydratePaletteLayout(palette, serialized)
+			expect(hydrated.parking).toHaveLength(1)
+			expect(hydrated.parking[0]).toHaveLength(1)
+			expect(hydrated.borders.top[0][0].toolbar).toHaveLength(1)
+		})
+
+		it('hydrated parking shares no references with borders', () => {
+			const palette = createTestPalette()
+			const serialized: SerializedPaletteLayout = {
+				version: 1,
+				borders: {
+					top: [{ space: 0, toolbar: [{ tool: 'testTool' }] }],
+					right: [],
+					bottom: [],
+					left: [],
+				},
+				parking: [[{ tool: 'anotherTool' }]],
+			}
+			const hydrated = hydratePaletteLayout(palette, serialized)
+			const borderToolbar = hydrated.borders.top[0][0].toolbar
+			const parkedToolbar = hydrated.parking[0]
+			expect(parkedToolbar).not.toBe(borderToolbar)
+			expect(parkedToolbar[0]).not.toBe(borderToolbar[0])
+			expect(
+				findOwnershipViolations({ borders: hydrated.borders, parking: hydrated.parking })
+			).toEqual([])
+		})
+	})
+
+	describe('instance identity', () => {
+		it('fingerprints canonical tool + editor + config', () => {
+			expect(itemFingerprint({ tool: 'alertLevel' })).toBe(
+				itemFingerprint({ tool: 'alertLevel=red' })
+			)
+			expect(itemFingerprint({ tool: 'alertLevel' })).toBe(
+				itemFingerprint({ tool: 'alertLevel|red' })
+			)
+			expect(itemFingerprint({ tool: 'alertLevel' })).toBe(
+				itemFingerprint({ tool: 'alertLevel:inc' })
+			)
+			expect(itemFingerprint({ tool: 'a', editor: 'toggle' })).not.toBe(
+				itemFingerprint({ tool: 'a', editor: 'select' })
+			)
+			expect(itemFingerprint({ tool: 'a', config: { b: 1, a: 2 } })).toBe(
+				itemFingerprint({ tool: 'a', config: { a: 2, b: 1 } })
+			)
+		})
+
+		it('flags shared references and structural duplicates', () => {
+			const shared = { tool: 'a' }
+			const borders: PaletteBorders = {
+				top: [[{ space: 0, toolbar: [shared] }]],
+				right: [],
+				bottom: [],
+				left: [],
+			}
+			const parking = [[shared]]
+			const violations = findOwnershipViolations({ borders, parking: parking as never })
+			expect(violations.some((v) => v.includes('shared'))).toBe(true)
+			expect(violations.some((v) => v.includes('duplicate'))).toBe(true)
 		})
 	})
 })

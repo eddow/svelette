@@ -12,21 +12,27 @@
 	}
 
 	let { context }: Props = $props()
-	// The live toolbar/track/border ride on the scope when the console builds
-	// the configurator context from `palettes.inspecting` (G2); without them
+	// The live container rides on the scope when the console builds the
+	// configurator context from `palettes.inspecting` (G2): border items carry
+	// toolbar/track/border, parking items carry toolbar/parking. Without them
 	// the presenter still renders, but `remove()` no-ops.
 	const view = $derived(
 		configuratorPresenter(
 			context,
-			context.scope.toolbar !== undefined &&
-				context.scope.track !== undefined &&
-				context.scope.border !== undefined
+			context.scope.toolbar !== undefined && context.scope.parking !== undefined
 				? {
 						toolbar: context.scope.toolbar as never,
-						track: context.scope.track as never,
-						border: context.scope.border as never
+						parking: context.scope.parking as never
 					}
-				: undefined
+				: context.scope.toolbar !== undefined &&
+					  context.scope.track !== undefined &&
+					  context.scope.border !== undefined
+					? {
+							toolbar: context.scope.toolbar as never,
+							track: context.scope.track as never,
+							border: context.scope.border as never
+						}
+					: undefined
 		)
 	)
 </script>

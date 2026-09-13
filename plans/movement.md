@@ -1,7 +1,7 @@
 # Movement
 
-> Status: **slide/restructure mode + slide anchor fixed (2026-09-12).** Permanent
-> principles live in `docs/movements.md`.
+> Status: **parking ↔ border drag symmetry + systematic preset loads done
+> (2026-09-13).** Permanent principles live in `docs/movements.md`.
 
 ## The target behaviour (agreed, kept)
 
@@ -16,7 +16,42 @@
    - **editing the editor** (a "delete" button on its edit surface), or
    - **moving it to parking, then removing it from parking.**
 
+## Done (2026-09-13)
+
+### Parking ↔ border drag symmetry + systematic preset loads
+
+Cross-container commits are symmetric now: `commitDraggedToItemSpace` and
+`commitDraggedToTrackSpace` accept parking origins via `pruneDragOrigin`
+(the `origin.kind !== 'border'` early returns are gone). A parked subset
+extracts into a fresh border toolbar; a whole parked row slides out of its
+stack into the track gap with identity preserved; a parked tool merges into
+a border toolbar and the session origin becomes `{ kind: 'border', … }`.
+The flanking-gap guard and the index-shift adjustment only apply when the
+origin shares the target track (a parking origin never does). Covered by a
+new `parking → border commits` block in `drag-invariants.test.ts` (merge,
+slide, extract + ownership checks).
+
+Preset loads are systematic: `DemoConfig` carries `parking` alongside
+`layout`, `demoLayoutFor` returns `{ borders, parking }`, and `loadPreset`
+splices both into the `$state` proxies — a preset is the whole
+configuration, so a stale parked row never survives a preset switch. The
+demo seed clones the preset parking too.
+
 ## Done (2026-09-12)
+
+### Parking as visible Ide-like stack
+
+Parking stays an independent stack but now reacts like a border's stack gaps
+and stays visible when empty: `Console` always renders `Parking` (bordered
+empty strip with a hint, single gap hittable); gaps highlight while
+editing + dragging (flanking pair on row hover, single on direct hover,
+doubled with `hovered`), suppressed around a row the drag would empty
+(`draggingEmptiesParkingRow`); `commitDraggedToParkingGap` commits on hover
+for either origin — subset to fresh row, whole toolbar/row relocated with
+identity preserved, flanking-gap no-op while sliding in-stack, index-shift
+adjustment, origin refreshed to `kind: 'parking'`; console panel-background
+hover keeps the end gap lit via the `maskActive` prop (the `Ide` mask
+analogue). Details in `docs/movements.md` + `docs/layout-and-drag.md`.
 
 ### The drag mode — one derived question, cached
 
@@ -87,11 +122,23 @@ single copy of the slide math. Removed the track-gap fallback
 CSS, the three inert space actions, `PaletteItemDragTarget.itemIndex`, the debug
 `console.log`s, and the false 4px-threshold comment.
 
+## Done (2026-09-12, parking independence)
+
+Parking is an independent stack (`PaletteParking`), not a mirror of the top
+border. `Console` renders `parking` (wired in `+page.svelte` with persistence);
+`Parking.svelte` owns its rows, `×` prunes via `removeParkedToolbar`, stack
+gaps accept border subset drags as fresh rows, and rows commit via
+`commitDraggedToParking` (ownership transfer). `PaletteDragOrigin` carries
+`kind: 'border' | 'parking'`; `isDraggingWholeToolbar`/`isDraggedToolbarAt`/
+`draggingEmptiesTrackIndex`/slide arming are container-scoped, so a top-bar
+drag can never light up a parking row as dragged. Instance identity:
+`canonicalItemTool`/`itemFingerprint`/`findOwnershipViolations` in
+`layout.svelte.ts` (position is part of instance identity; same object twice
+is a bug). `serialize`/`hydrate` round-trip parking.
+
 ## TODO
 
 - **Stack DZ commits** (tool → new singleton toolbar in a track/stack).
-- **Parking is not persisted** — `serialize`/`hydrate` round-trip borders only;
-  parking rows are display-only until the next movement design.
 - **Auto-hover-commit sharp edge** — a released drag over a gap commits even
   without intent. Options: keep as agreed ("previewing is moving"), require a
   click before promotion, or promote only after the pointer rests ~150ms.

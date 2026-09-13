@@ -79,6 +79,23 @@
 		0 0 0 4px rgba(96, 165, 250, 0.25);
 }
 
+/* Highlighted item separators must hit-test everywhere they paint. The
+ * outer glow (`0 0 0 4px` halo) renders outside the border box, and the
+ * neighbouring item guards (`inset: -3px`, `z-index: 1`) overlap the box
+ * edges — without this, the colored rim reports the guard as its target.
+ * Raising the separator above the guards plus a transparent `::before`
+ * expanded by the glow spread keeps hit-testing aligned with display. */
+.toolbar-item-space.toolbar-drop-zone.highlighted {
+	z-index: 2;
+}
+
+.toolbar-item-space.toolbar-drop-zone.highlighted::before {
+	content: '';
+	position: absolute;
+	inset: -5px;
+	background: transparent;
+}
+
 /* Directly mouse-hovered DZ (parallel stacks only): double the size. */
 .toolbar-stack-space.toolbar-drop-zone.highlighted.hovered {
 	min-width: calc(var(--palette-dz-size) * 2);
@@ -332,6 +349,21 @@
 	flex: 1 1 auto;
 }
 
+/* Empty parking keeps a hint of presence: the stack never collapses, so its
+ * single gap stays hittable and reads as a drop target while dragging. */
+.palette-parking-empty {
+	display: block;
+	padding: 0.35rem 0.5rem;
+	color: rgba(148, 163, 184, 0.85);
+	font-size: 0.82rem;
+	text-align: center;
+	user-select: none;
+}
+
+.palette-parking:has(.palette-parking-empty) > .toolbar-stack-space {
+	min-height: 0.75rem;
+}
+
 .palette-parking-remove {
 	display: inline-flex;
 	align-items: center;
@@ -339,23 +371,31 @@
 	width: 1.5rem;
 	height: 1.5rem;
 	padding: 0;
-	border: 1px solid rgba(148, 163, 184, 0.38);
+	border: 1px solid rgba(248, 113, 113, 0.55);
 	border-radius: 999px;
-	background: rgba(15, 23, 42, 0.72);
-	color: rgba(226, 232, 240, 0.92);
+	background: rgba(127, 29, 29, 0.72);
+	color: #fecaca;
 	cursor: pointer;
 	flex: 0 0 auto;
 	line-height: 1;
+	font-size: 0.8rem;
 	transition:
 		border-color 120ms ease,
 		background 120ms ease,
-		color 120ms ease;
+		color 120ms ease,
+		transform 120ms ease;
+}
+
+.palette-parking-remove-icon {
+	display: inline-flex;
+	line-height: 1;
 }
 
 .palette-parking-remove:hover {
-	border-color: rgba(96, 165, 250, 0.9);
-	background: rgba(29, 78, 216, 0.9);
-	color: #eff6ff;
+	border-color: rgba(248, 113, 113, 0.95);
+	background: rgba(185, 28, 28, 0.92);
+	color: #fef2f2;
+	transform: translateY(-1px);
 }
 
 /* ── Axis-Aware Orthogonal Toolbar Sizing ── */

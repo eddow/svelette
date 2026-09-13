@@ -3,17 +3,22 @@
 	import type { SvelteHTMLElements } from 'svelte/elements'
 	import {
 		commitDraggedToItemSpace,
+		commitDraggedToParking,
+		isDraggedToolbarAt,
 		isItemSpaceFree,
 		nearestFreeItemSpaceAfter,
 		nearestFreeItemSpaceBefore,
 		paletteItemDrag,
 		paletteItemShield,
+		paletteParkingItemDrag,
+		paletteParkingToolbarDrag,
 		paletteToolbarDrag
 	} from '../layout.svelte'
 	import { hasPaletteItemTool, type Palette as PaletteRuntime, palettes } from '../palette.svelte'
 	import type {
 		PaletteBorder,
 		PaletteEditorContext,
+		PaletteParking,
 		PaletteRegion,
 		PaletteScope,
 		PaletteToolbar,
@@ -31,11 +36,26 @@
 		region?: PaletteRegion
 		track?: PaletteTrack
 		trackIndex?: number
+		/** Parking container: the independent stack + row index. When set,
+		 * the toolbar drags/commits/highlights as parking, never as border. */
+		parking?: PaletteParking
+		parkingIndex?: number
 		el?: SvelteHTMLElements['div']
 	}
 
-	let { toolbar, direction, palette, scope, border, region, track, trackIndex, el }: Props =
-		$props()
+	let {
+		toolbar,
+		direction,
+		palette,
+		scope,
+		border,
+		region,
+		track,
+		trackIndex,
+		parking,
+		parkingIndex,
+		el
+	}: Props = $props()
 
 	// Editors read `palette` + `region` off the scope; stamp `region` here so
 	// left/right borders derive the vertical surface axis correctly.
@@ -68,22 +88,66 @@
 		}
 	}
 
-	function dragTarget() {
+	function borderDragTarget() {
+		return border !== undefined &&
+			region !== undefined &&
+			track !== undefined &&
+			trackIndex !== undefined &&
+			parking === undefined
+			? { kind: 'border' as const, border, direction, palette, region, toolbar, track, trackIndex }
+			: undefined
+	}
+
+	function parkingDragTarget() {
+		return parking !== undefined && parkingIndex !== undefined
+			? {
+					kind: 'parking' as const,
+					direction,
+					palette,
+					toolbar,
+					parking,
+					index: parkingIndex
+				}
+			: undefined
+	}
+
+	function itemDragTarget(item: PaletteToolbarItem) {
+		if (parking !== undefined && parkingIndex !== undefined)
+			return {
+				kind: 'parking' as const,
+				direction,
+				item,
+				palette,
+				toolbar,
+				parking,
+				index: parkingIndex
+			}
 		return border !== undefined &&
 			region !== undefined &&
 			track !== undefined &&
 			trackIndex !== undefined
-			? { border, direction, palette, region, toolbar, track, trackIndex }
+			? {
+					kind: 'border' as const,
+					border,
+					direction,
+					item,
+					palette,
+					region,
+					toolbar,
+					track,
+					trackIndex
+				}
 			: undefined
 	}
 
 	function shieldActive(): boolean {
+		if (!palette.editing) return false
+		if (parking !== undefined && parkingIndex !== undefined) return true
 		return (
 			border !== undefined &&
 			region !== undefined &&
 			track !== undefined &&
-			trackIndex !== undefined &&
-			palette.editing
+			trackIndex !== undefined
 		)
 	}
 
@@ -92,7 +156,16 @@
 		palettes.inspecting?.palette === palette ? palettes.inspecting : undefined
 	)
 	function isInspecting(item: PaletteToolbarItem): boolean {
-		return inspecting?.item === item
+		if (inspecting?.item !== item) return false
+		// Container-scoped: a parked item and a border item holding the same
+		// tool+config are distinct instances — highlight only where selected.
+		if (parking !== undefined && parkingIndex !== undefined)
+			return inspecting?.parking === parking && inspecting?.parkingIndex === parkingIndex
+		return (
+			inspecting?.toolbar === toolbar &&
+			inspecting?.track === track &&
+			inspecting?.border === border
+		)
 	}
 
 	// Perpendicular DZs inside a toolbar: the "half-tool" separators between
@@ -111,11 +184,18 @@
 	const isDragging = $derived(palettes.dragging?.palette === palette)
 	// The dragged toolbar keeps its handles exposed (padding) for the whole
 	// session: `:hover` drops on grab (pointer capture retargets), so without
-	// this the toolbar would collapse the moment the drag starts. Identity on
-	// the session's origin — the same test for a whole-toolbar grab and for a
-	// tool set promoted into its own toolbar.
+	// this the toolbar would collapse the moment the drag starts. Container-
+	// scoped: the same toolbar object rendered in two places (border + parking
+	// mirror) matches only where the drag originated — position is part of
+	// instance identity.
 	const isDraggedToolbar = $derived(
-		editing && isDragging && palettes.dragging?.origin.toolbar === toolbar
+		editing &&
+			isDragging &&
+			(parking !== undefined && parkingIndex !== undefined
+				? isDraggedToolbarAt(toolbar, { kind: 'parking', toolbar, parking, index: parkingIndex })
+				: border !== undefined &&
+					track !== undefined &&
+					isDraggedToolbarAt(toolbar, { kind: 'border', toolbar, track, border }))
 	)
 
 	function isSpaceFree(index: number): boolean {
@@ -144,15 +224,18 @@
 			// Commit on DZ hover: move dragged tools into this toolbar at this
 			// position. The origin is pruned if emptied. Svelte re-renders the
 			// DOM after this handler returns, so highlighting recomputes from
-			// the updated toolbar state.
+			// the updated toolbar state. Parking rows commit via the parking
+			// path (ownership transfer); border toolbars via the border path.
 			if (
 				hoveredItemSpace !== undefined &&
 				hoveredItemSpace !== prev &&
-				isSpaceFree(hoveredItemSpace) &&
-				track &&
-				border
+				isSpaceFree(hoveredItemSpace)
 			) {
-				commitDraggedToItemSpace(toolbar, track, border, hoveredItemSpace)
+				if (parking !== undefined && parkingIndex !== undefined) {
+					commitDraggedToParking(toolbar, parking, parkingIndex, hoveredItemSpace)
+				} else if (track && border) {
+					commitDraggedToItemSpace(toolbar, track, border, hoveredItemSpace)
+				}
 			}
 			return
 		}
@@ -202,7 +285,9 @@
 	data-palette-id={palette.id}
 	data-editing={editing ? 'true' : undefined}
 	data-dragged={isDraggedToolbar ? 'true' : undefined}
-	use:paletteToolbarDrag={dragTarget()}
+	data-container={parking !== undefined ? 'parking' : 'border'}
+	use:paletteToolbarDrag={borderDragTarget()}
+	use:paletteParkingToolbarDrag={parkingDragTarget()}
 	onpointermove={onToolbarPointerMove}
 	onpointerleave={onToolbarPointerLeave}
 >
@@ -228,22 +313,17 @@
 					<PaletteItem Editor={resolved.Editor} context={resolved.context} />
 				{/if}
 			</div>
-			{#if border !== undefined && region !== undefined && track !== undefined && trackIndex !== undefined && editing}
-				<div
-					class="toolbar-item-guard"
-					data-palette-id={palette.id}
-					aria-hidden="true"
-					use:paletteItemDrag={{
-						border,
-						direction,
-						item,
-						palette,
-						region,
-						toolbar,
-						track,
-						trackIndex
-					}}
-				></div>
+			{#if editing}
+				{@const target = itemDragTarget(item)}
+				{#if target}
+					<div
+						class="toolbar-item-guard"
+						data-palette-id={palette.id}
+						aria-hidden="true"
+						use:paletteItemDrag={target.kind === 'border' ? target : undefined}
+						use:paletteParkingItemDrag={target.kind === 'parking' ? target : undefined}
+					></div>
+				{/if}
 			{/if}
 		</div>
 		<div

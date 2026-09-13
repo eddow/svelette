@@ -26,7 +26,7 @@ For the data model itself see `docs/layout-and-drag.md` and
 | ----- | ------- |
 | `palette` | The palette instance the drag belongs to. |
 | `tools` | The selected tools (one tool, or a whole toolbar's content). |
-| `origin` | `{ toolbar, track, border }` — where those tools currently live. Refreshed after every commit. |
+| `origin` | `{ kind: 'border', toolbar, track, border }` or `{ kind: 'parking', toolbar, parking, index }` — where those tools currently live. Refreshed after every commit. |
 | `mode` | `'restructure'` or `'slide'` — what the selection *means right now*. |
 | `grabOffset` | Pixel delta of the cursor within the dragged toolbar. Absent for a restructure drag (its toolbar does not exist yet). |
 
@@ -59,10 +59,26 @@ which is why the mode is cached rather than derived on demand.
 ### Commits
 
 - **Item space** (`commitDraggedToItemSpace`): the dragged tools are spliced
-  into the target toolbar at the given item-space index. The mode is then
-  recomputed; a merge into a populated toolbar ends sliding.
+  into the target border toolbar at the given item-space index, from either
+  origin container via `pruneDragOrigin` (a parking drag becomes a border
+  drag after landing). The mode is then recomputed; a merge into a populated
+  toolbar ends sliding.
+- **Parking row** (`commitDraggedToParking`): ownership-transfer move into a
+  parking toolbar — the tools leave the origin container (border toolbar
+  pruned when emptied, parking row pruned when emptied) and the session
+  origin becomes `{ kind: 'parking', … }`.
+- **Parking gap** (`commitDraggedToParkingGap`): parking is a standard stack —
+  every gap is a destination and commits on hover, for either origin
+  container. `'restructure'` extracts the subset into a fresh singleton row;
+  `'slide'` relocates `origin.toolbar` itself as a row (identity preserved,
+  read back out of the stack like the track-gap proxy fix). While sliding a
+  parked row within its own stack, the two flanking gaps are a no-op
+  (keep-moving, not destinations); a restructure beside its own row is a
+  valid move. The gap index is adjusted for the shift caused by pruning the
+  origin row from the same stack.
 - **Track gap** (`commitDraggedToTrackSpace`): one branch on the mode read
-  *before* mutating.
+  *before* mutating, for either origin container (a parked row slides out of
+  its stack into the track; a parked subset extracts into a fresh toolbar).
   - `'restructure'`: extract the tools into a fresh singleton toolbar at the
     gap (splitting it 50/50), prune the origin if it emptied.
   - `'slide'`: relocate `origin.toolbar` **itself** — identity preserved,
@@ -72,12 +88,42 @@ which is why the mode is cached rather than derived on demand.
     inside the commit, so callers need no geometry of their own. It is
     deliberately **not** applied to a restructure — pulling a tool out and
     dropping it into the gap right beside its own toolbar is a valid move.
+    A parking origin never shares the target track, so the flanking guard
+    and the index-shift adjustment only apply to border origins.
 
 Both refresh `dragging.origin` so the next hover moves from the new location,
 and both adjust the gap index for the shift caused by pruning the origin from
 a shared track.
 
 ### Identity and reactive state
+
+An instantiated tool is `tool + editor + config + position`: the same
+tool+config object must never live in two containers (single ownership).
+`canonicalItemTool` strips setter (`=`/`|`)/action (`:`) suffixes,
+`itemFingerprint` hashes canonical tool + editor + stable-stringified config,
+and `findOwnershipViolations({ borders, parking })` flags shared `===`
+references and structural duplicates. Position is part of instance identity:
+`isDraggingWholeToolbar` only matches the session's own origin toolbar and
+`isDraggedToolbarAt` additionally compares the container (`border` track +
+border vs `parking` stack + index) — so a parking row can never light up as
+the dragged toolbar of a border drag, even holding the same object.
+
+Parking is an independent stack (`PaletteParking`), never a view over a
+border. `Console` always renders `parking` (persisted via
+`serialize`/`hydrate`) — empty parking stays visible as a bordered strip with
+a hint, so its single gap stays hittable. Rows commit through the parking
+path and prune via `removeParkedToolbar`.
+
+Parking gaps react like a border's stack gaps: zero-size until highlighted,
+`highlighted` (to `--palette-dz-size`) while editing + dragging, doubled with
+`hovered` on direct hover. Hovering a row highlights its two flanking gaps;
+hovering a gap directly highlights only that one. Gaps flanking a row the
+drag would empty stay dark (`draggingEmptiesParkingRow`, the parking analogue
+of `draggingEmptiesTrackIndex`). While a drag is active and the pointer is
+over the console panel background (outside rows/gaps/popups), the end gap
+stays lit via the `maskActive` prop — the console analogue of `Ide`'s mask
+hover. Gap indices are real stack indices, never filtered-view positions, so
+hidden commandBox-only rows never collapse the numbering.
 
 The border is `$state`, so a toolbar stored in a track is a *proxy* of the
 array that was inserted. The commit therefore reads the placed toolbar back

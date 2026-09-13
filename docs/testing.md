@@ -1,6 +1,6 @@
 # Testing
 
-## Unit (Vitest, jsdom) — 113 tests, 12 files
+## Unit (Vitest, jsdom) — 151 tests, 16 files
 
 Run: `npm run test`. Config: `vitest.config.ts` (`environment: jsdom`,
 `resolve.conditions: ['browser']`, alias `$lib`, setup `tests/setup.ts`).
@@ -11,10 +11,12 @@ Run: `npm run test`. Config: `vitest.config.ts` (`environment: jsdom`,
 | `tests/component.test.ts` | 1 | testing-library Svelte mount |
 | `tests/palette/keys.test.ts` | 6 | keystroke normalization, event derivation, binding resolution |
 | `tests/palette/palette.test.ts` | 17 | tool resolution, setter/action runners, editor resolution, configurator scope, surface axis, `dragend` clearing, multi-setter divergence, hydrated reactivity (`HydratedBordersProbe`) |
-| `tests/palette/serialization.test.ts` | 15 | `serialize` / `validate` / `hydrate` round-trips |
+| `tests/palette/serialization.test.ts` | 19 | `serialize` / `validate` / `hydrate` round-trips, parking persistence + ownership, instance fingerprints |
 | `tests/palette/command-box.test.ts` | 26 | entry builders, model search/filter/score, keyboard, non-runnable `PaletteError` (`CommandBoxEntriesProbe` for reactive entries) |
-| `tests/palette/components.test.ts` | 13 | `paletteRoot`, item drag/inspect, `Ide`, `Parking` (`PaletteRootProbe`, `PaletteItemDragProbe`, `IdeProbe`, `ParkingProbe`, `ParkingEditorStub`) |
+| `tests/palette/components.test.ts` | 16 | `paletteRoot`, item drag/inspect, `Ide`, `Parking` independent stack (`PaletteRootProbe`, `PaletteItemDragProbe`, `IdeProbe`, `ParkingProbe`, `ParkingEditorStub`) |
 | `tests/palette/item-movement.test.ts` | 13 | `resolveItemPlacementTarget` contract |
+| `tests/palette/drag-invariants.test.ts` | 12 | mode model + container-scoped identity (border drag never matches parking, parking↔border ownership transfer) |
+| `tests/palette/track-gap.test.ts` | 4 | track-gap hover commits, slide disarm on merge |
 | `tests/palette/drawer.test.ts` | 6 | factory shape, open/Escape, collapse signal, axis inversion, popup scope, hover travel |
 | `tests/palette/editors.test.ts` | 3 | toggle/select editors, `BaseConfigurator` editor-choices |
 | `tests/palette/export-split.test.ts` | 2 | core/edition boundary (core lacks mutation, edition re-exports core) |

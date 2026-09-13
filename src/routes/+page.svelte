@@ -11,7 +11,7 @@
 	import Ide from '$lib/palette/components/Ide.svelte'
 	import { consoleState } from '$lib/palette/console.svelte'
 	import { serializePaletteLayout, validatePaletteLayout } from '$lib/palette/edition.svelte'
-	import type { PaletteBorder, SerializedPaletteLayout } from '$lib/palette/types'
+	import type { PaletteBorder, PaletteParking, SerializedPaletteLayout } from '$lib/palette/types'
 	import '$lib/palette/styles/palette.css'
 	import '$lib/head/styles/head-default.css'
 
@@ -34,12 +34,14 @@
 	}
 
 	// Seed fresh clones so edits never mutate the shared config layout objects,
-	// and so server + client first render are identical.
+	// and so server + client first render are identical. Parking is its own
+	// independent stack — never a live border, never shared references.
 	const initial = demoLayoutFor('rw-combobox')
-	const top = $state(structuredClone(initial.top))
-	const left = $state(structuredClone(initial.left))
-	const right = $state(structuredClone(initial.right))
-	const bottom = $state(structuredClone(initial.bottom))
+	const top = $state(structuredClone(initial.borders.top))
+	const left = $state(structuredClone(initial.borders.left))
+	const right = $state(structuredClone(initial.borders.right))
+	const bottom = $state(structuredClone(initial.borders.bottom))
+	const parking: PaletteParking = $state(structuredClone(initial.parking))
 	let layoutRestored = $state(false)
 
 	// Theme resolution: `demoState.theme` is the setting (`light`/`dark`/`system`);
@@ -96,7 +98,8 @@
 		// runtime borders are track lists (`{ space, toolbar }[][]`). Re-nest
 		// each stored slot as its own single-slot track — the same shape
 		// `hydratePaletteLayout` produces — then splice into the `$state`
-		// proxies so the inserted data stays reactive.
+		// proxies so the inserted data stays reactive. Parking splices as
+		// plain rows into its own stack (never into a border).
 		const nest = (slots: SerializedPaletteLayout['borders']['top']): PaletteBorder =>
 			slots.map((slot) => [
 				{ space: slot.space, toolbar: slot.toolbar as PaletteBorder[number][number]['toolbar'] }
@@ -105,11 +108,12 @@
 		left.splice(0, left.length, ...nest(stored.borders.left))
 		right.splice(0, right.length, ...nest(stored.borders.right))
 		bottom.splice(0, bottom.length, ...nest(stored.borders.bottom))
+		parking.splice(0, parking.length, ...(structuredClone(stored.parking ?? []) as PaletteParking))
 	}
 
 	function persistLayout() {
 		try {
-			const serialized = serializePaletteLayout({ top, left, right, bottom })
+			const serialized = serializePaletteLayout({ top, left, right, bottom }, parking)
 			localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(serialized))
 			demoState.lastAction = 'Layout saved'
 		} catch {
@@ -119,11 +123,15 @@
 
 	/** Load a preset configuration layout (a command, not a state). */
 	function loadPreset(id: DemoMode) {
+		// A preset is the whole configuration: borders AND parking. Splice
+		// both into the `$state` proxies so a stale parked row never survives
+		// a preset switch.
 		const layout = demoLayoutFor(id)
-		top.splice(0, top.length, ...structuredClone(layout.top))
-		left.splice(0, left.length, ...structuredClone(layout.left))
-		right.splice(0, right.length, ...structuredClone(layout.right))
-		bottom.splice(0, bottom.length, ...structuredClone(layout.bottom))
+		top.splice(0, top.length, ...structuredClone(layout.borders.top))
+		left.splice(0, left.length, ...structuredClone(layout.borders.left))
+		right.splice(0, right.length, ...structuredClone(layout.borders.right))
+		bottom.splice(0, bottom.length, ...structuredClone(layout.borders.bottom))
+		parking.splice(0, parking.length, ...structuredClone(layout.parking))
 		layoutRestored = false
 		demoState.lastAction = `Loaded "${demoConfigs.find((c) => c.id === id)?.label ?? id}"`
 	}
@@ -169,7 +177,7 @@
 	</div>
 	<Ide palette={demoPalette} {top} {left} {right} {bottom}>
 		{#if consoleState.open}
-			<Console palette={demoPalette as never} {top} {left} {right} {bottom} />
+			<Console palette={demoPalette as never} {top} {left} {right} {bottom} {parking} />
 		{/if}
 		<div class="demo-center" class:is-dimmed={consoleState.open} data-testid="work-zone">
 			<div class="demo-hero">
